@@ -152,17 +152,34 @@ function calcularNotas() {
 function _aplicarFormato(hRes, cfg, numFilas) {
   if (numFilas === 0) return;
   const lastRow = 1 + numFilas;
+
+  // ── Alturas de fila (fila 2 a lastRow) ──────────────────────────────────────
+  for (let row = 2; row <= lastRow; row++) hRes.setRowHeight(row, 22);
+
+  // ── Columnas con estilo constante (un solo batch por grupo) ─────────────────
+  hRes.getRange(2, cfg.colPreguntas, numFilas, 2)
+    .setBackground('#f1f3f4').setHorizontalAlignment('center').setNumberFormat('0');
+  hRes.getRange(2, cfg.colExamenTeo, numFilas, 1)
+    .setBackground('#e6f4ea').setFontColor('#0f9d58').setFontWeight('bold')
+    .setHorizontalAlignment('center').setNumberFormat('0.00');
+  hRes.getRange(2, cfg.colNotaTeo, numFilas, 1)
+    .setBackground('#e8f0fe').setFontColor('#1565c0').setFontWeight('bold')
+    .setHorizontalAlignment('center').setNumberFormat('0.00');
+  if (cfg.colPracticas.length > 0) {
+    hRes.getRange(2, cfg.colPracticas[0], numFilas, cfg.colPracticas.length)
+      .setBackground('#fff8e1').setFontColor('#b45309')
+      .setHorizontalAlignment('center').setNumberFormat('0.00');
+  }
+
+  // ── Columnas que varían por fila (nombre alternado, total por nota) ──────────
   for (let row = 2; row <= lastRow; row++) {
-    hRes.setRowHeight(row, 22);
-    hRes.getRange(row, cfg.colNombre).setBackground(row%2===0?'#f8f9fa':'#ffffff').setFontWeight('normal');
-    hRes.getRange(row, cfg.colPreguntas, 1, 2).setBackground('#f1f3f4').setHorizontalAlignment('center').setNumberFormat('0');
-    hRes.getRange(row, cfg.colExamenTeo).setBackground('#e6f4ea').setFontColor('#0f9d58').setFontWeight('bold').setHorizontalAlignment('center').setNumberFormat('0.00');
-    hRes.getRange(row, cfg.colNotaTeo).setBackground('#e8f0fe').setFontColor('#1565c0').setFontWeight('bold').setHorizontalAlignment('center').setNumberFormat('0.00');
-    cfg.colPracticas.forEach(col => hRes.getRange(row, col).setBackground('#fff8e1').setFontColor('#b45309').setHorizontalAlignment('center').setNumberFormat('0.00'));
+    hRes.getRange(row, cfg.colNombre).setBackground(row % 2 === 0 ? '#f8f9fa' : '#ffffff').setFontWeight('normal');
     const total = parseFloat(hRes.getRange(row, cfg.colTotal).getValue()) || 0;
-    const {bg,fg} = _colorNota(total);
+    const { bg, fg } = _colorNota(total);
     hRes.getRange(row, cfg.colTotal).setBackground(bg).setFontColor(fg).setFontWeight('bold').setHorizontalAlignment('center').setNumberFormat('0.00');
   }
+
+  // ── Fila de medias ───────────────────────────────────────────────────────────
   const filaMed = lastRow + 1;
   hRes.setRowHeight(filaMed, 22);
   hRes.getRange(filaMed, 1).setValue('📊 MEDIA').setBackground('#e8eaed').setFontWeight('bold');
@@ -478,7 +495,6 @@ function generarPDFsIndividuales() {
 function generarFeedbackGemini() {
   const ui = SpreadsheetApp.getUi();
   try {
-    // Test de conexión primero
     const testOk = _testGemini();
     if (!testOk.ok) {
       ui.alert('❌ No se puede conectar con Gemini.\n\n' + testOk.error +
@@ -490,61 +506,8 @@ function generarFeedbackGemini() {
     const { filas } = _obtenerDatos(cfg);
     const lote      = filas.slice(0, MAX_FEEDBACK);
     const folder    = _carpeta('Juritecnia/Feedback');
-    const doc       = DocumentApp.create('Feedback Gemini - ' + _fechaHoy());
-    const body      = doc.getBody();
-    body.setMarginLeft(60).setMarginRight(60);
 
-    body.appendParagraph('JURITECNIA · FEEDBACK GEMINI IA')
-      .setHeading(DocumentApp.ParagraphHeading.TITLE)
-      .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    body.appendParagraph(`Feedback personalizado — ${lote.length} alumno(s) — ${_fechaHoy()}`)
-      .setAlignment(DocumentApp.HorizontalAlignment.CENTER).setItalic(true);
-    body.appendParagraph('');
-
-    let count = 0, errores = 0;
-    lote.forEach((r, idx) => {
-      Utilities.sleep(1500);
-      const lineasPract = cfg.practicas.map((p, pi) =>
-        `- ${p.nombre}: ${r.practicas[pi].toFixed(2)}/${p.max} pts (peso ${p.peso}%)`).join('\n');
-
-      const prompt =
-        `Eres el profesor Flor de Juritecnia. Tu alumno ${r.nombre} ha obtenido:\n` +
-        `- Test teórico: ${r.aciertos}/${cfg.preguntas} aciertos → ${r.examenTeorico.toFixed(1)}/10 → ${r.notaTeorica.toFixed(2)} puntos (peso ${cfg.teorico.peso}%)\n` +
-        lineasPract + '\n' +
-        `- NOTA FINAL: ${r.totalNota.toFixed(2)}/10 → ${_calificacion(r.totalNota)}\n\n` +
-        `Escribe un feedback personalizado de exactamente 4 párrafos breves:\n` +
-        `1) Valora su rendimiento en el test teórico (menciona si los aciertos son buenos o mejorables).\n` +
-        `2) Comenta las prácticas: señala cuál fue su punto más fuerte y cuál necesita mejorar.\n` +
-        `3) Da un consejo académico concreto y accionable para mejorar.\n` +
-        `4) Cierra con una frase motivadora personalizada.\n` +
-        `Usa un tono cercano pero profesional. Firma como "Prof. Flor".`;
-
-      let feedback = '';
-      try {
-        feedback = _llamarGemini(prompt);
-        count++;
-      } catch (e) {
-        feedback = `⚠️ No se pudo generar feedback automático.\nError: ${e.message}`;
-        errores++;
-        Logger.log(`Gemini error (${r.nombre}): ${e.message}`);
-      }
-
-      body.appendParagraph(`${idx + 1}. ${r.nombre}`)
-        .setHeading(DocumentApp.ParagraphHeading.HEADING1).setBold(true);
-      body.appendParagraph(`Nota final: ${r.totalNota.toFixed(2)}/10 — ${_calificacion(r.totalNota)}`)
-        .setItalic(true).setFontSize(11);
-      body.appendParagraph(feedback).setFontSize(11);
-      body.appendParagraph('');
-      body.appendHorizontalRule();
-      body.appendParagraph('');
-    });
-
-    body.appendParagraph('Prof. Francisco Javier Flor González')
-      .setAlignment(DocumentApp.HorizontalAlignment.RIGHT).setItalic(true);
-
-    doc.saveAndClose();
-    const file = _moverACarpeta(doc.getId(), folder);
-
+    const { file, count, errores } = _generarDocFeedback(cfg, lote, folder);
     const msg = `✅ Feedback generado: ${count} correctos, ${errores} errores.\n\nURL:\n${file.getUrl()}`;
     ui.alert(msg);
     return { success: true, count, errores, url: file.getUrl(), name: file.getName() };
@@ -554,6 +517,68 @@ function generarFeedbackGemini() {
     ui.alert('❌ Error al generar feedback: ' + e.message);
     return { success: false, error: e.message };
   }
+}
+
+// ── Helper: construir prompt de feedback para un alumno ──────────────────────
+function _buildFeedbackPrompt(r, cfg) {
+  const lineasPract = cfg.practicas.map((p, pi) =>
+    `- ${p.nombre}: ${r.practicas[pi].toFixed(2)}/${p.max} pts (peso ${p.peso}%)`).join('\n');
+  return (
+    `Eres el profesor Flor de Juritecnia. Tu alumno ${r.nombre} ha obtenido:\n` +
+    `- Test teórico: ${r.aciertos}/${cfg.preguntas} aciertos → ${r.examenTeorico.toFixed(1)}/10 → ${r.notaTeorica.toFixed(2)} puntos (peso ${cfg.teorico.peso}%)\n` +
+    lineasPract + '\n' +
+    `- NOTA FINAL: ${r.totalNota.toFixed(2)}/10 → ${_calificacion(r.totalNota)}\n\n` +
+    `Escribe un feedback personalizado de exactamente 4 párrafos breves:\n` +
+    `1) Valora su rendimiento en el test teórico (menciona si los aciertos son buenos o mejorables).\n` +
+    `2) Comenta las prácticas: señala cuál fue su punto más fuerte y cuál necesita mejorar.\n` +
+    `3) Da un consejo académico concreto y accionable para mejorar.\n` +
+    `4) Cierra con una frase motivadora personalizada.\n` +
+    `Usa un tono cercano pero profesional. Firma como "Prof. Flor".`
+  );
+}
+
+// ── Helper: crear documento de feedback para un lote de alumnos ──────────────
+function _generarDocFeedback(cfg, lote, folder) {
+  const doc  = DocumentApp.create('Feedback Gemini - ' + _fechaHoy());
+  const body = doc.getBody();
+  body.setMarginLeft(60).setMarginRight(60);
+
+  body.appendParagraph('JURITECNIA · FEEDBACK GEMINI IA')
+    .setHeading(DocumentApp.ParagraphHeading.TITLE)
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  body.appendParagraph(`Feedback personalizado — ${lote.length} alumno(s) — ${_fechaHoy()}`)
+    .setAlignment(DocumentApp.HorizontalAlignment.CENTER).setItalic(true);
+  body.appendParagraph('');
+
+  let count = 0, errores = 0;
+  lote.forEach((r, idx) => {
+    Utilities.sleep(1500);
+    let feedback = '';
+    try {
+      feedback = _llamarGemini(_buildFeedbackPrompt(r, cfg));
+      count++;
+    } catch (e) {
+      feedback = `⚠️ No se pudo generar feedback automático.\nError: ${e.message}`;
+      errores++;
+      Logger.log(`Gemini error (${r.nombre}): ${e.message}`);
+    }
+
+    body.appendParagraph(`${idx + 1}. ${r.nombre}`)
+      .setHeading(DocumentApp.ParagraphHeading.HEADING1).setBold(true);
+    body.appendParagraph(`Nota final: ${r.totalNota.toFixed(2)}/10 — ${_calificacion(r.totalNota)}`)
+      .setItalic(true).setFontSize(11);
+    body.appendParagraph(feedback).setFontSize(11);
+    body.appendParagraph('');
+    body.appendHorizontalRule();
+    body.appendParagraph('');
+  });
+
+  body.appendParagraph('Prof. Francisco Javier Flor González')
+    .setAlignment(DocumentApp.HorizontalAlignment.RIGHT).setItalic(true);
+
+  doc.saveAndClose();
+  const file = _moverACarpeta(doc.getId(), folder);
+  return { file, count, errores };
 }
 
 // ── Probar conexión Gemini ────────────────────────────────────────────────────
@@ -653,25 +678,27 @@ function _mediasComponentes(filas, cfg) {
 
   // Teórico (en puntos)
   const notasTeo = filas.map(r => r.notaTeorica);
+  const mediaTeo = notasTeo.reduce((a, b) => a + b, 0) / notasTeo.length;
   res.push({
     nombre:   cfg.teorico.nombre,
-    media:    notasTeo.reduce((a,b)=>a+b,0)/notasTeo.length,
+    media:    mediaTeo,
     max:      cfg.teorico.max,
     maxObt:   Math.max(...notasTeo),
     minObt:   Math.min(...notasTeo),
-    eficacia: (notasTeo.reduce((a,b)=>a+b,0)/notasTeo.length / cfg.teorico.max) * 100
+    eficacia: (mediaTeo / cfg.teorico.max) * 100
   });
 
   // Prácticas
   cfg.practicas.forEach((p, pi) => {
-    const vals = filas.map(r => r.practicas[pi]);
+    const vals  = filas.map(r => r.practicas[pi]);
+    const media = vals.reduce((a, b) => a + b, 0) / vals.length;
     res.push({
       nombre:   p.nombre,
-      media:    vals.reduce((a,b)=>a+b,0)/vals.length,
+      media,
       max:      p.max,
       maxObt:   Math.max(...vals),
       minObt:   Math.min(...vals),
-      eficacia: (vals.reduce((a,b)=>a+b,0)/vals.length / p.max) * 100
+      eficacia: (media / p.max) * 100
     });
   });
 
@@ -741,17 +768,7 @@ function _llamarGemini(prompt, maxTokens) {
     const url  = AISTUDIO_ENDPOINT + '?key=' + GEMINI_API_KEY;
     const opts = { method:'post', contentType:'application/json',
                    payload: JSON.stringify(payload), muteHttpExceptions: true };
-    for (let i = 1; i <= 3; i++) {
-      const res  = UrlFetchApp.fetch(url, opts);
-      const code = res.getResponseCode();
-      const body = res.getContentText();
-      if ((code === 429 || code >= 500) && i < 3) { Utilities.sleep(2000*i); continue; }
-      const json  = JSON.parse(body);
-      const texto = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (texto) return texto.trim();
-      if (json.error) throw new Error(`Gemini API error ${json.error.code}: ${json.error.message}`);
-      throw new Error('Respuesta inesperada (HTTP ' + code + ')');
-    }
+    return _fetchConReintentos(url, opts, 'Gemini API');
   }
 
   // Opción B: Vertex AI (OAuth)
@@ -760,19 +777,25 @@ function _llamarGemini(prompt, maxTokens) {
     headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
     payload: JSON.stringify(payload), muteHttpExceptions: true
   };
+  return _fetchConReintentos(VERTEX_ENDPOINT, opts, 'Vertex AI',
+    'Comprueba que el proyecto GCP tiene Vertex AI habilitado o configura GEMINI_API_KEY.');
+}
+
+// ── Helper: ejecutar fetch con reintentos ante errores 429/5xx ───────────────
+function _fetchConReintentos(url, opts, nombreServicio, sugerencia) {
   for (let i = 1; i <= 3; i++) {
-    const res  = UrlFetchApp.fetch(VERTEX_ENDPOINT, opts);
+    const res  = UrlFetchApp.fetch(url, opts);
     const code = res.getResponseCode();
     const body = res.getContentText();
-    if ((code === 429 || code >= 500) && i < 3) { Utilities.sleep(2000*i); continue; }
+    if ((code === 429 || code >= 500) && i < 3) { Utilities.sleep(2000 * i); continue; }
     const json  = JSON.parse(body);
     const texto = json?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (texto) return texto.trim();
-    if (json.error) throw new Error(`Vertex AI error ${json.error.code}: ${json.error.message}`);
-    throw new Error('Sin respuesta válida de Vertex AI (HTTP ' + code + '). ' +
-      'Comprueba que el proyecto GCP tiene Vertex AI habilitado o configura GEMINI_API_KEY.');
+    if (json.error) throw new Error(`${nombreServicio} error ${json.error.code}: ${json.error.message}`);
+    const extra = sugerencia ? ' ' + sugerencia : '';
+    throw new Error(`Sin respuesta válida de ${nombreServicio} (HTTP ${code}).${extra}`);
   }
-  throw new Error('Gemini no respondió tras 3 intentos.');
+  throw new Error(`${nombreServicio} no respondió tras 3 intentos.`);
 }
 
 
@@ -847,55 +870,17 @@ function wb_pdfs() {
   catch(e) { return { success:false, error:e.message }; }
 }
 function wb_feedback() {
-  // Wrapper sin ui.alert para el sidebar — llama directo a la lógica
+  // Wrapper sin ui.alert para el sidebar — usa los helpers compartidos
   try {
     const cfg       = leerConfig();
     const { filas } = _obtenerDatos(cfg);
     const lote      = filas.slice(0, MAX_FEEDBACK);
     const folder    = _carpeta('Juritecnia/Feedback');
-    const doc       = DocumentApp.create('Feedback Gemini - ' + _fechaHoy());
-    const body      = doc.getBody();
-    body.setMarginLeft(60).setMarginRight(60);
-
-    body.appendParagraph('JURITECNIA · FEEDBACK GEMINI IA')
-      .setHeading(DocumentApp.ParagraphHeading.TITLE)
-      .setAlignment(DocumentApp.HorizontalAlignment.CENTER);
-    body.appendParagraph(`${lote.length} alumno(s) — ${_fechaHoy()}`)
-      .setAlignment(DocumentApp.HorizontalAlignment.CENTER).setItalic(true);
-    body.appendParagraph('');
-
-    let count = 0, errores = 0;
-    lote.forEach((r, idx) => {
-      Utilities.sleep(1500);
-      const lineasPract = cfg.practicas.map((p, pi) =>
-        `- ${p.nombre}: ${r.practicas[pi].toFixed(2)}/${p.max} pts (peso ${p.peso}%)`).join('\n');
-      const prompt =
-        `Eres el profesor Flor de Juritecnia. Tu alumno ${r.nombre} ha obtenido:\n` +
-        `- Test teórico: ${r.aciertos}/${cfg.preguntas} aciertos → ${r.examenTeorico.toFixed(1)}/10 → ${r.notaTeorica.toFixed(2)} puntos (peso ${cfg.teorico.peso}%)\n` +
-        lineasPract + '\n' +
-        `- NOTA FINAL: ${r.totalNota.toFixed(2)}/10 → ${_calificacion(r.totalNota)}\n\n` +
-        `Escribe un feedback personalizado de exactamente 4 párrafos breves:\n` +
-        `1) Valora el test teórico.\n2) Comenta las prácticas (fuerte y a mejorar).\n` +
-        `3) Da un consejo concreto.\n4) Cierra con una frase motivadora.\n` +
-        `Tono cercano pero profesional. Firma como "Prof. Flor".`;
-      let feedback = '';
-      try { feedback = _llamarGemini(prompt); count++; }
-      catch(e) { feedback = `⚠️ Error al generar feedback: ${e.message}`; errores++; Logger.log(`Gemini (${r.nombre}): ${e.message}`); }
-
-      body.appendParagraph(`${idx+1}. ${r.nombre}`).setHeading(DocumentApp.ParagraphHeading.HEADING1).setBold(true);
-      body.appendParagraph(`Nota: ${r.totalNota.toFixed(2)}/10 — ${_calificacion(r.totalNota)}`).setItalic(true).setFontSize(11);
-      body.appendParagraph(feedback).setFontSize(11);
-      body.appendParagraph('');
-      body.appendHorizontalRule();
-      body.appendParagraph('');
-    });
-
-    doc.saveAndClose();
-    const file = _moverACarpeta(doc.getId(), folder);
-    return { success:true, count, errores, url:file.getUrl(), name:file.getName() };
-  } catch(e) {
-    Logger.log(e.stack||e);
-    return { success:false, error:e.message };
+    const { file, count, errores } = _generarDocFeedback(cfg, lote, folder);
+    return { success: true, count, errores, url: file.getUrl(), name: file.getName() };
+  } catch (e) {
+    Logger.log(e.stack || e);
+    return { success: false, error: e.message };
   }
 }
 function wb_stats()    { return verEstadisticas(); }
