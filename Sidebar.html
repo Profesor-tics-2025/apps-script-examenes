@@ -155,6 +155,22 @@
         animation:spin .7s linear infinite; flex-shrink:0;
       }
       @keyframes spin { to { transform:rotate(360deg); } }
+
+      /* Extras: elementos nuevos */
+      .textarea-import {
+        width:100%; padding:8px; border:1px solid var(--borde); border-radius:8px;
+        font-family:inherit; font-size:.82rem; resize:vertical; min-height:80px;
+        background:var(--fondo); color:#202124; transition:border-color .15s;
+      }
+      .textarea-import:focus { outline:none; border-color:var(--azul); background:white; }
+      .rank-item { display:flex; align-items:center; gap:6px; margin-bottom:4px; font-size:.78rem; }
+      .rank-badge { padding:2px 8px; border-radius:6px; font-weight:700; font-size:.78rem; flex-shrink:0; }
+      .risk-item { background:#fce8e6; border-radius:8px; padding:7px 10px; margin-bottom:4px; font-size:.78rem; display:flex; justify-content:space-between; align-items:center; }
+      .dist-row { display:flex; align-items:center; gap:6px; margin-bottom:5px; font-size:.78rem; }
+      .hist-item { background:var(--fondo); border-radius:8px; padding:8px 10px; margin-bottom:6px; font-size:.78rem; line-height:1.5; }
+      .comp-row-stat { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:.78rem; gap:6px; }
+      .eficacia-bar { height:6px; background:#e0e0e0; border-radius:4px; flex:1; overflow:hidden; }
+      .eficacia-fill { height:100%; border-radius:4px; }
     </style>
   </head>
   <body>
@@ -198,6 +214,26 @@
           <button class="btn btn-azul"  id="btn-guardar">💾 Guardar en hoja Configuracion</button>
           <button class="btn btn-verde" id="btn-aplicar" style="margin-top:0">⚙️ Aplicar → reconstruir Resultados</button>
         </div>
+        <div class="card">
+          <div class="card-title">👥 Importar alumnos</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Pega nombres (uno por línea) para añadirlos a la hoja Resultados. Se asigna el nº de preguntas configurado.
+          </p>
+          <textarea class="textarea-import" id="txt-nombres" placeholder="Ana García López&#10;Juan Martínez Ruiz&#10;..."></textarea>
+          <button class="btn btn-gris" id="btn-importar" style="margin-top:8px">👥 Importar a Resultados</button>
+        </div>
+        <div class="card">
+          <div class="card-title">⚖️ Umbral de aprobado</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Nota mínima para aprobar (por defecto 5.0). Afecta estadísticas, coloreado y el Dashboard.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Nota mínima:</label>
+            <input type="number" id="cfg-umbral" min="1" max="9.9" step="0.5" value="5"
+              style="width:72px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-azul" id="btn-guardar-umbral">⚖️ Guardar umbral</button>
+        </div>
       </div>
 
       <!-- TAB: CALCULAR -->
@@ -212,6 +248,57 @@
           </p>
           <button class="btn btn-azul" id="btn-calc">🧮 Calcular notas + formato</button>
         </div>
+        <div class="card">
+          <div class="card-title">🎲 Corrección por azar</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Aplica: aciertos_corr = aciertos − errores / (opciones − 1). Recalcula notas automáticamente.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Opciones/pregunta:</label>
+            <input type="number" id="cfg-opciones" min="2" max="10" value="4"
+              style="width:60px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-naranja" id="btn-corregir-azar">🎲 Aplicar corrección por azar</button>
+        </div>
+        <div class="card">
+          <div class="card-title">📏 Redondear aprobados</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Sube a 5.00 los alumnos cuya nota esté dentro del margen inferior al aprobado.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Margen (puntos):</label>
+            <input type="number" id="cfg-margen" min="0.1" max="2" step="0.1" value="0.5"
+              style="width:70px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-verde" id="btn-redondear">📏 Redondear aprobados a 5.00</button>
+        </div>
+        <div class="card">
+          <div class="card-title">🗑️ Limpiar datos</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px">
+            Elimina todos los datos de alumnos manteniendo las cabeceras de la hoja Resultados.
+          </p>
+          <button class="btn btn-rojo" id="btn-limpiar">🗑️ Limpiar hoja de resultados</button>
+        </div>
+        <div class="card">
+          <div class="card-title">🔧 Utilidades de datos</div>
+          <button class="btn btn-outline" id="btn-rellenar-pregs">📋 Rellenar preguntas vacías</button>
+          <button class="btn btn-outline" id="btn-marcar-np" style="color:var(--gris);border-color:var(--gris);margin-top:0">🚫 Marcar no presentados (NP)</button>
+        </div>
+        <div class="card">
+          <div class="card-title">🎁 Bonificación</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Suma puntos extra a la nota final de los alumnos con nota &gt; 0.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Puntos:</label>
+            <input type="number" id="cfg-bonus" min="0.1" max="3" step="0.25" value="0.5"
+              style="width:62px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Máx nota:</label>
+            <input type="number" id="cfg-bonus-max" min="5" max="10" step="0.5" value="10"
+              style="width:60px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-morado" id="btn-bonificacion">🎁 Aplicar bonificación</button>
+        </div>
       </div>
 
       <!-- TAB: DOCUMENTOS -->
@@ -220,6 +307,24 @@
           <div class="card-title">📁 Generar documentos</div>
           <button class="btn btn-verde"  id="btn-informe">📊 Informe grupal con gráficos</button>
           <button class="btn btn-morado" id="btn-pdf">📄 PDFs individuales</button>
+        </div>
+        <div class="card">
+          <div class="card-title">🗃️ Historial de evaluaciones</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Guarda un resumen estadístico de la evaluación actual para comparar convocatorias.
+          </p>
+          <input type="text" id="txt-etiqueta-hist" placeholder="Ej: 1ª convocatoria · Junio 2025"
+            style="width:100%;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.82rem;font-family:inherit;margin-bottom:8px;transition:border-color .15s"
+            onfocus="this.style.borderColor='var(--azul)'" onblur="this.style.borderColor='var(--borde)'">
+          <button class="btn btn-azul"  id="btn-guardar-hist">💾 Guardar en historial</button>
+          <button class="btn btn-gris"  id="btn-ver-hist" style="margin-top:0">📋 Ver historial</button>
+          <div id="hist-content" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📊 Herramientas de datos</div>
+          <button class="btn btn-azul"    id="btn-dashboard">📊 Crear / actualizar Dashboard</button>
+          <button class="btn btn-naranja" id="btn-backup"    style="margin-top:0">💾 Copia de seguridad</button>
+          <button class="btn btn-gris"    id="btn-csv"       style="margin-top:0">📥 Exportar CSV a Drive</button>
         </div>
       </div>
 
@@ -253,7 +358,18 @@
           <button class="btn btn-naranja" id="btn-stats">📈 Cargar estadísticas</button>
           <div id="stats-content" style="display:none;margin-top:10px">
             <div class="stats-grid" id="stats-grid"></div>
+            <div id="stats-dist" style="display:none;margin-top:12px"></div>
+            <div id="stats-comp" style="display:none;margin-top:12px"></div>
           </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🏆 Ranking y suspensos</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-azul" id="btn-ranking" style="flex:1;margin-bottom:0">🏆 Ver ranking</button>
+            <button class="btn btn-rojo" id="btn-riesgo"  style="flex:1;margin-bottom:0">⚠️ Suspensos</button>
+          </div>
+          <div id="ranking-content" style="display:none;margin-top:10px;max-height:300px;overflow-y:auto"></div>
+          <div id="riesgo-content"  style="display:none;margin-top:10px"></div>
         </div>
       </div>
 
@@ -460,11 +576,11 @@
             mostrarStats(r);
           })
           .withFailureHandler(e => toastErr(e.message))
-          .wb_stats();
+          .wb_statsConUmbral();
       };
 
       function mostrarStats(s) {
-        const pct = v => Math.round((v/s.total)*100);
+        const pct = v => s.total > 0 ? Math.round((v / s.total) * 100) : 0;
         document.getElementById('stats-grid').innerHTML = `
           <div class="stat-box"><div class="stat-val">${s.total}</div><div class="stat-lbl">Alumnos</div></div>
           <div class="stat-box"><div class="stat-val">${(+s.media).toFixed(2)}</div><div class="stat-lbl">Nota media</div></div>
@@ -476,6 +592,43 @@
           <div class="stat-box"><div class="stat-val">${(+s.desviacion).toFixed(2)}</div><div class="stat-lbl">Desv. típica</div></div>
           <div class="stat-box full"><div class="stat-val" style="font-size:1rem">${(+s.mediaAciertos).toFixed(1)} aciertos</div><div class="stat-lbl">Media test</div></div>`;
         document.getElementById('stats-content').style.display = 'block';
+
+        // Distribución de calificaciones con barras
+        if (s.dist) {
+          const DC = [
+            { nombre:'Sobresaliente', val:s.dist.sobresaliente, color:'#137333' },
+            { nombre:'Notable',       val:s.dist.notable,       color:'#1967d2' },
+            { nombre:'Bien',          val:s.dist.bien,          color:'#b45309' },
+            { nombre:'Aprobado',      val:s.dist.aprobado,      color:'#f9ab00' },
+            { nombre:'Suspenso',      val:s.dist.suspenso,      color:'#c5221f' },
+          ];
+          document.getElementById('stats-dist').innerHTML =
+            '<div style="font-size:.74rem;font-weight:700;color:var(--gris);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Distribución</div>' +
+            DC.map(d => `
+              <div class="dist-row">
+                <span style="width:84px;color:var(--gris);flex-shrink:0">${d.nombre}</span>
+                <div style="flex:1;background:#f0f0f0;border-radius:4px;height:8px;overflow:hidden">
+                  <div style="width:${pct(d.val)}%;background:${d.color};height:100%;border-radius:4px;transition:width .4s"></div>
+                </div>
+                <span style="width:48px;text-align:right;font-weight:700;color:${d.color};flex-shrink:0">${d.val} <span style="font-weight:400;color:var(--gris);font-size:.7rem">(${pct(d.val)}%)</span></span>
+              </div>`
+            ).join('');
+          document.getElementById('stats-dist').style.display = 'block';
+        }
+
+        // Medias por componente con barra de eficacia
+        if (s.componentes?.length) {
+          document.getElementById('stats-comp').innerHTML =
+            '<div style="font-size:.74rem;font-weight:700;color:var(--gris);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Por componente</div>' +
+            s.componentes.map((c, i) => `
+              <div class="comp-row-stat">
+                <span style="width:88px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex-shrink:0" title="${c.nombre}">${c.nombre}</span>
+                <div class="eficacia-bar"><div class="eficacia-fill" style="width:${c.eficacia}%;background:${COLORES[i % COLORES.length]}"></div></div>
+                <span style="width:38px;text-align:right;font-weight:700;color:${COLORES[i % COLORES.length]};flex-shrink:0">${c.eficacia}%</span>
+              </div>`
+            ).join('');
+          document.getElementById('stats-comp').style.display = 'block';
+        }
       }
 
       // ── Cargar config al abrir ──
@@ -492,7 +645,247 @@
           .withFailureHandler(() => renderComponentes())
           .wb_leerConfig();
       }
-      document.addEventListener('DOMContentLoaded', cargarConfigDesdeHoja);
+      document.addEventListener('DOMContentLoaded', () => {
+        cargarConfigDesdeHoja();
+        if (typeof google !== 'undefined' && google?.script?.run) {
+          google.script.run
+            .withSuccessHandler(r => { if (r?.success) document.getElementById('cfg-umbral').value = r.umbral; })
+            .wb_leerUmbral();
+        }
+      });
+
+      // ── Helper: color según nota (JS) ──
+      function colorNota(nota) {
+        if (nota >= 9) return { bg:'#e6f4ea', fg:'#137333' };
+        if (nota >= 7) return { bg:'#e8f0fe', fg:'#1967d2' };
+        if (nota >= 6) return { bg:'#fef7e0', fg:'#b45309' };
+        if (nota >= 5) return { bg:'#fff8e1', fg:'#b45309' };
+        return             { bg:'#fce8e6', fg:'#c5221f' };
+      }
+
+      // ── Importar nombres ──
+      document.getElementById('btn-importar').onclick = () => {
+        const texto = document.getElementById('txt-nombres').value.trim();
+        if (!texto) { toastErr('Escribe al menos un nombre.'); return; }
+        toast('Importando alumnos...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (r?.success) {
+              document.getElementById('txt-nombres').value = '';
+              toast(`✅ ${r.importados} alumno(s) importados a la hoja Resultados.`, 'done');
+            } else toastErr(r?.error || 'Error al importar');
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_importarNombres(texto);
+      };
+
+      // ── Corrección por azar ──
+      document.getElementById('btn-corregir-azar').onclick = () => {
+        const opciones = parseInt(document.getElementById('cfg-opciones').value) || 4;
+        if (!confirm(`¿Aplicar corrección por azar con ${opciones} opciones? Esto modifica los aciertos de todos los alumnos.`)) return;
+        toast(`Aplicando corrección por azar (${opciones} opciones)...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_corregirAzar(opciones);
+      };
+
+      // ── Redondear aprobados ──
+      document.getElementById('btn-redondear').onclick = () => {
+        const margen = parseFloat(document.getElementById('cfg-margen').value) || 0.5;
+        toast(`Buscando alumnos entre ${(5 - margen).toFixed(1)} y 5.0...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_redondearAprobados(margen);
+      };
+
+      // ── Limpiar resultados ──
+      document.getElementById('btn-limpiar').onclick = () => {
+        if (!confirm('⚠️ ¿Eliminar todos los datos de alumnos? Esta acción no se puede deshacer.')) return;
+        toast('Limpiando hoja de resultados...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_limpiarResultados();
+      };
+
+      // ── Guardar historial ──
+      document.getElementById('btn-guardar-hist').onclick = () => {
+        const etiqueta = document.getElementById('txt-etiqueta-hist').value.trim();
+        toast('Guardando en historial...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (r?.success) { document.getElementById('txt-etiqueta-hist').value = ''; toast('✅ ' + r.msg, 'done'); }
+            else toastErr(r?.error);
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_guardarHistorial(etiqueta);
+      };
+
+      // ── Ver historial ──
+      document.getElementById('btn-ver-hist').onclick = () => {
+        toast('Cargando historial...', 'load');
+        google.script.run
+          .withSuccessHandler(r => {
+            toastEl.classList.remove('show');
+            const div = document.getElementById('hist-content');
+            if (!r?.success) { toastErr(r?.error); return; }
+            if (r.historial.length === 0) {
+              div.innerHTML = '<p style="font-size:.78rem;color:var(--gris)">No hay historial guardado todavía.</p>';
+            } else {
+              div.innerHTML = r.historial.map(h =>
+                `<div class="hist-item">
+                  <b>${h.etiqueta}</b><br>
+                  <span style="color:var(--gris)">${h.fecha}</span><br>
+                  ${h.total} alumnos · Media: <b>${h.media}</b> · ✅ ${h.aprobados} aprobados
+                </div>`
+              ).join('');
+            }
+            div.style.display = 'block';
+          })
+          .withFailureHandler(e => toastErr(e.message))
+          .wb_leerHistorial();
+      };
+
+      // ── Ranking ──
+      document.getElementById('btn-ranking').onclick = () => {
+        toast('Calculando ranking...', 'load');
+        google.script.run
+          .withSuccessHandler(r => {
+            toastEl.classList.remove('show');
+            const div = document.getElementById('ranking-content');
+            document.getElementById('riesgo-content').style.display = 'none';
+            if (!r?.success) { toastErr(r?.error); return; }
+            div.innerHTML =
+              '<div style="font-size:.74rem;font-weight:700;color:var(--gris);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">🏆 Ranking</div>' +
+              r.ranking.map(a => {
+                const cn = colorNota(a.nota);
+                return `<div class="rank-item">
+                  <span style="width:20px;font-weight:700;color:var(--gris);text-align:right;flex-shrink:0">${a.pos}.</span>
+                  <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.nombre}</span>
+                  <span class="rank-badge" style="background:${cn.bg};color:${cn.fg}">${a.nota.toFixed(2)}</span>
+                </div>`;
+              }).join('');
+            div.style.display = 'block';
+          })
+          .withFailureHandler(e => toastErr(e.message))
+          .wb_rankingAlumnos();
+      };
+
+      // ── Alumnos suspensos ──
+      document.getElementById('btn-riesgo').onclick = () => {
+        toast('Buscando alumnos suspensos...', 'load');
+        google.script.run
+          .withSuccessHandler(r => {
+            toastEl.classList.remove('show');
+            const div = document.getElementById('riesgo-content');
+            document.getElementById('ranking-content').style.display = 'none';
+            if (!r?.success) { toastErr(r?.error); return; }
+            if (r.riesgo.length === 0) {
+              div.innerHTML = '<p style="font-size:.82rem;color:var(--verde);font-weight:500;padding:6px 0">✅ ¡Ningún alumno suspendido!</p>';
+            } else {
+              div.innerHTML =
+                `<div style="font-size:.74rem;font-weight:700;color:var(--rojo);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">⚠️ Suspensos (${r.total})</div>` +
+                r.riesgo.map(a =>
+                  `<div class="risk-item">
+                    <span>${a.nombre}</span>
+                    <span style="font-weight:700;color:var(--rojo)">${a.nota.toFixed(2)}</span>
+                  </div>`
+                ).join('');
+            }
+            div.style.display = 'block';
+          })
+          .withFailureHandler(e => toastErr(e.message))
+          .wb_alumnosEnRiesgo();
+      };
+
+      // ── Guardar umbral ──
+      document.getElementById('btn-guardar-umbral').onclick = () => {
+        const umbral = parseFloat(document.getElementById('cfg-umbral').value) || 5;
+        toast(`Guardando umbral (${umbral})...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_guardarUmbral(umbral);
+      };
+
+      // ── Rellenar preguntas ──
+      document.getElementById('btn-rellenar-pregs').onclick = () => {
+        toast('Rellenando celdas de preguntas vacías...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_rellenarPreguntas();
+      };
+
+      // ── Marcar NP ──
+      document.getElementById('btn-marcar-np').onclick = () => {
+        if (!confirm('¿Marcar como NP (No Presentado) a los alumnos con todos los datos a 0?')) return;
+        toast('Marcando alumnos no presentados...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_marcarNoPresentados();
+      };
+
+      // ── Bonificación ──
+      document.getElementById('btn-bonificacion').onclick = () => {
+        const puntos  = parseFloat(document.getElementById('cfg-bonus').value)     || 0.5;
+        const notaMax = parseFloat(document.getElementById('cfg-bonus-max').value) || 10;
+        if (!confirm(`¿Sumar +${puntos} pts a todos los alumnos con nota > 0 (máximo ${notaMax})?`)) return;
+        toast(`Aplicando bonificación +${puntos} pts...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_aplicarBonificacion(puntos, notaMax);
+      };
+
+      // ── Dashboard ──
+      document.getElementById('btn-dashboard').onclick = () => {
+        toast('Creando Dashboard... (puede tardar unos segundos)', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_crearDashboard();
+      };
+
+      // ── Backup ──
+      document.getElementById('btn-backup').onclick = () => {
+        toast('Creando copia de seguridad...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_hacerBackup();
+      };
+
+      // ── Exportar CSV ──
+      document.getElementById('btn-csv').onclick = () => {
+        toast('Generando CSV en Drive...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (!r?.success) return toastErr(r?.error || 'Error al exportar');
+            toast(`✅ CSV listo: <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">${r.name}</a>`, 'done');
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_exportarCSV();
+      };
+
+      // ── Actualizar mostrarStats para mostrar umbral personalizado ──
+      const _mostrarStatsOriginal = mostrarStats;
+      mostrarStats = function(s) {
+        _mostrarStatsOriginal(s);
+        if (s.umbral !== undefined && s.umbral !== 5) {
+          const badge = document.createElement('div');
+          badge.style.cssText = 'font-size:.74rem;background:#e8f0fe;color:#1a73e8;padding:5px 10px;border-radius:6px;margin-bottom:8px;font-weight:500';
+          badge.textContent = `⚖️ Umbral configurado: ${s.umbral} (no estándar)`;
+          const grid = document.getElementById('stats-grid');
+          grid.parentNode.insertBefore(badge, grid);
+        }
+      };
     </script>
   </body>
 </html>
