@@ -905,3 +905,183 @@ function wb_testGemini() {
     ? { success:true, msg:'✅ Gemini responde: ' + res.respuesta }
     : { success:false, error:res.error };
 }
+
+
+// ── NUEVAS FUNCIONALIDADES ────────────────────────────────────────────────────
+
+const HOJA_HIST = 'Historial';
+
+// Ranking de alumnos ordenado por nota final (desc)
+function wb_rankingAlumnos() {
+  try {
+    const cfg = leerConfig();
+    const { filas } = _obtenerDatos(cfg);
+    const ranking = filas
+      .map(r => ({ nombre: r.nombre, nota: r.totalNota, calificacion: _calificacion(r.totalNota) }))
+      .sort((a, b) => b.nota - a.nota)
+      .map((r, i) => ({ pos: i + 1, ...r }));
+    return { success: true, ranking };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Lista de alumnos con nota final < 5, ordenados de menor a mayor
+function wb_alumnosEnRiesgo() {
+  try {
+    const cfg = leerConfig();
+    const { filas } = _obtenerDatos(cfg);
+    const riesgo = filas
+      .filter(r => r.totalNota < 5)
+      .sort((a, b) => a.totalNota - b.totalNota)
+      .map(r => ({ nombre: r.nombre, nota: r.totalNota, aciertos: r.aciertos }));
+    return { success: true, riesgo, total: riesgo.length };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Guarda resumen estadístico en la hoja Historial con fecha y etiqueta
+function wb_guardarHistorial(etiqueta) {
+  try {
+    const cfg = leerConfig();
+    const { stats } = _obtenerDatos(cfg);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let hHist = ss.getSheetByName(HOJA_HIST) || ss.insertSheet(HOJA_HIST);
+    if (hHist.getLastRow() === 0) {
+      hHist.getRange(1,1,1,7).setValues([['Fecha','Etiqueta','Alumnos','Media','Mediana','Aprobados','Suspensos']]);
+      hHist.getRange(1,1,1,7).setBackground('#37474f').setFontColor('#fff').setFontWeight('bold');
+    }
+    const fecha = new Date().toLocaleString('es-ES');
+    const label = (etiqueta || '').trim() || fecha;
+    hHist.appendRow([fecha, label, stats.total, +stats.media.toFixed(2), +stats.mediana.toFixed(2), stats.aprobados, stats.suspensos]);
+    return { success: true, msg: `Guardado en historial: "${label}"` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Lee todas las entradas del historial (más recientes primero)
+function wb_leerHistorial() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hHist = ss.getSheetByName(HOJA_HIST);
+    if (!hHist || hHist.getLastRow() <= 1) return { success: true, historial: [] };
+    const data = hHist.getRange(2, 1, hHist.getLastRow() - 1, 7).getValues();
+    const historial = data.filter(r => r[0]).map(r => ({
+      fecha:     r[0] instanceof Date ? r[0].toLocaleString('es-ES') : String(r[0]),
+      etiqueta:  String(r[1]),
+      total:     r[2],
+      media:     r[3],
+      mediana:   r[4],
+      aprobados: r[5],
+      suspensos: r[6]
+    })).reverse();
+    return { success: true, historial };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Añade una lista de nombres (uno por línea) a la hoja Resultados con nº preguntas por defecto
+function wb_importarNombres(texto) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada. Aplica la configuración primero.`);
+    const cfg = leerConfig();
+    const nombres = texto.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+    if (nombres.length === 0) throw new Error('No se encontraron nombres válidos en el texto.');
+    const startRow = Math.max(hRes.getLastRow() + 1, 2);
+    nombres.forEach((nombre, i) => {
+      hRes.getRange(startRow + i, cfg.colNombre).setValue(nombre);
+      hRes.getRange(startRow + i, cfg.colPreguntas).setValue(cfg.preguntas);
+    });
+    return { success: true, importados: nombres.length };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Corrección por azar: aciertos_corr = aciertos − errores/(opciones−1), recalcula notas
+function wb_corregirAzar(opciones) {
+  try {
+    opciones = parseInt(opciones) || 4;
+    if (opciones < 2) throw new Error('El número de opciones debe ser ≥ 2.');
+    const cfg = leerConfig();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const filas = _leerFilas(hRes, cfg);
+    if (filas.length === 0) throw new Error('No hay alumnos en la hoja.');
+
+    filas.forEach(({ rowNum, data }) => {
+      const preguntas = parseFloat(data[cfg.colPreguntas - 1]) || cfg.preguntas;
+      const aciertos  = parseFloat(data[cfg.colAciertos  - 1]) || 0;
+      const errores   = preguntas - aciertos;
+      const corregido = Math.max(0, aciertos - errores / (opciones - 1));
+      hRes.getRange(rowNum, cfg.colAciertos).setValue(+corregido.toFixed(2));
+    });
+
+    // Recalcular notas directamente sin UI alerts
+    const filasAct = _leerFilas(hRes, cfg);
+    filasAct.forEach(({ rowNum, data }) => {
+      const c = _calcular(data, cfg);
+      hRes.getRange(rowNum, cfg.colExamenTeo).setValue(+c.examenTeorico.toFixed(2));
+      hRes.getRange(rowNum, cfg.colNotaTeo).setValue(+c.notaTeorica.toFixed(2));
+      hRes.getRange(rowNum, cfg.colTotal).setValue(+c.totalNota.toFixed(2));
+    });
+    _aplicarFormato(hRes, cfg, filasAct.length);
+
+    return { success: true, corregidos: filas.length,
+      msg: `Corrección (${opciones} opciones) aplicada a ${filas.length} alumnos y notas recalculadas.` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Sube a 5.00 los alumnos cuya nota esté en [5−margen, 5)
+function wb_redondearAprobados(margen) {
+  try {
+    margen = parseFloat(margen) || 0.5;
+    if (margen <= 0 || margen > 2) throw new Error('El margen debe estar entre 0.1 y 2 puntos.');
+    const cfg = leerConfig();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const filas = _leerFilas(hRes, cfg);
+    let redondeados = 0;
+    filas.forEach(({ rowNum, data }) => {
+      const nota = parseFloat(data[cfg.colTotal - 1]) || 0;
+      if (nota >= (5 - margen) && nota < 5) {
+        hRes.getRange(rowNum, cfg.colTotal).setValue(5.00)
+          .setBackground('#e6f4ea').setFontColor('#137333').setFontWeight('bold');
+        redondeados++;
+      }
+    });
+    return { success: true, redondeados,
+      msg: `${redondeados} alumno(s) subidos a 5.00 (margen aplicado: ${margen} pts).` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Elimina los datos de alumnos manteniendo las cabeceras de la hoja Resultados
+function wb_limpiarResultados() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const lastRow = hRes.getLastRow();
+    if (lastRow <= 1) return { success: true, msg: 'La hoja ya estaba vacía.' };
+    hRes.getRange(2, 1, lastRow - 1, hRes.getLastColumn()).clearContent().clearFormat();
+    return { success: true, msg: `${lastRow - 1} filas eliminadas. Cabeceras conservadas.` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Estadísticas extendidas: incluye distribución de calificaciones y medias por componente
+function wb_statsExtendidos() {
+  try {
+    const cfg = leerConfig();
+    const { filas, stats } = _obtenerDatos(cfg);
+    const dist = _distribucionCalificaciones(filas);
+    const mediasComp = _mediasComponentes(filas, cfg);
+    return {
+      success: true,
+      ...stats,
+      dist,
+      componentes: mediasComp.map(m => ({
+        nombre:   m.nombre,
+        media:    +m.media.toFixed(2),
+        max:      m.max,
+        eficacia: +m.eficacia.toFixed(1)
+      }))
+    };
+  } catch(e) { return { success: false, error: e.message }; }
+}
