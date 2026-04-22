@@ -222,6 +222,18 @@
           <textarea class="textarea-import" id="txt-nombres" placeholder="Ana García López&#10;Juan Martínez Ruiz&#10;..."></textarea>
           <button class="btn btn-gris" id="btn-importar" style="margin-top:8px">👥 Importar a Resultados</button>
         </div>
+        <div class="card">
+          <div class="card-title">⚖️ Umbral de aprobado</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Nota mínima para aprobar (por defecto 5.0). Afecta estadísticas, coloreado y el Dashboard.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Nota mínima:</label>
+            <input type="number" id="cfg-umbral" min="1" max="9.9" step="0.5" value="5"
+              style="width:72px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-azul" id="btn-guardar-umbral">⚖️ Guardar umbral</button>
+        </div>
       </div>
 
       <!-- TAB: CALCULAR -->
@@ -267,6 +279,26 @@
           </p>
           <button class="btn btn-rojo" id="btn-limpiar">🗑️ Limpiar hoja de resultados</button>
         </div>
+        <div class="card">
+          <div class="card-title">🔧 Utilidades de datos</div>
+          <button class="btn btn-outline" id="btn-rellenar-pregs">📋 Rellenar preguntas vacías</button>
+          <button class="btn btn-outline" id="btn-marcar-np" style="color:var(--gris);border-color:var(--gris);margin-top:0">🚫 Marcar no presentados (NP)</button>
+        </div>
+        <div class="card">
+          <div class="card-title">🎁 Bonificación</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Suma puntos extra a la nota final de los alumnos con nota &gt; 0.
+          </p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Puntos:</label>
+            <input type="number" id="cfg-bonus" min="0.1" max="3" step="0.25" value="0.5"
+              style="width:62px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+            <label style="font-size:.82rem;white-space:nowrap;color:var(--gris)">Máx nota:</label>
+            <input type="number" id="cfg-bonus-max" min="5" max="10" step="0.5" value="10"
+              style="width:60px;padding:7px 8px;border:1px solid var(--borde);border-radius:7px;font-size:.85rem;text-align:center">
+          </div>
+          <button class="btn btn-morado" id="btn-bonificacion">🎁 Aplicar bonificación</button>
+        </div>
       </div>
 
       <!-- TAB: DOCUMENTOS -->
@@ -287,6 +319,12 @@
           <button class="btn btn-azul"  id="btn-guardar-hist">💾 Guardar en historial</button>
           <button class="btn btn-gris"  id="btn-ver-hist" style="margin-top:0">📋 Ver historial</button>
           <div id="hist-content" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📊 Herramientas de datos</div>
+          <button class="btn btn-azul"    id="btn-dashboard">📊 Crear / actualizar Dashboard</button>
+          <button class="btn btn-naranja" id="btn-backup"    style="margin-top:0">💾 Copia de seguridad</button>
+          <button class="btn btn-gris"    id="btn-csv"       style="margin-top:0">📥 Exportar CSV a Drive</button>
         </div>
       </div>
 
@@ -538,7 +576,7 @@
             mostrarStats(r);
           })
           .withFailureHandler(e => toastErr(e.message))
-          .wb_statsExtendidos();
+          .wb_statsConUmbral();
       };
 
       function mostrarStats(s) {
@@ -607,7 +645,14 @@
           .withFailureHandler(() => renderComponentes())
           .wb_leerConfig();
       }
-      document.addEventListener('DOMContentLoaded', cargarConfigDesdeHoja);
+      document.addEventListener('DOMContentLoaded', () => {
+        cargarConfigDesdeHoja();
+        if (typeof google !== 'undefined' && google?.script?.run) {
+          google.script.run
+            .withSuccessHandler(r => { if (r?.success) document.getElementById('cfg-umbral').value = r.umbral; })
+            .wb_leerUmbral();
+        }
+      });
 
       // ── Helper: color según nota (JS) ──
       function colorNota(nota) {
@@ -755,6 +800,91 @@
           })
           .withFailureHandler(e => toastErr(e.message))
           .wb_alumnosEnRiesgo();
+      };
+
+      // ── Guardar umbral ──
+      document.getElementById('btn-guardar-umbral').onclick = () => {
+        const umbral = parseFloat(document.getElementById('cfg-umbral').value) || 5;
+        toast(`Guardando umbral (${umbral})...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_guardarUmbral(umbral);
+      };
+
+      // ── Rellenar preguntas ──
+      document.getElementById('btn-rellenar-pregs').onclick = () => {
+        toast('Rellenando celdas de preguntas vacías...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_rellenarPreguntas();
+      };
+
+      // ── Marcar NP ──
+      document.getElementById('btn-marcar-np').onclick = () => {
+        if (!confirm('¿Marcar como NP (No Presentado) a los alumnos con todos los datos a 0?')) return;
+        toast('Marcando alumnos no presentados...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_marcarNoPresentados();
+      };
+
+      // ── Bonificación ──
+      document.getElementById('btn-bonificacion').onclick = () => {
+        const puntos  = parseFloat(document.getElementById('cfg-bonus').value)     || 0.5;
+        const notaMax = parseFloat(document.getElementById('cfg-bonus-max').value) || 10;
+        if (!confirm(`¿Sumar +${puntos} pts a todos los alumnos con nota > 0 (máximo ${notaMax})?`)) return;
+        toast(`Aplicando bonificación +${puntos} pts...`, 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_aplicarBonificacion(puntos, notaMax);
+      };
+
+      // ── Dashboard ──
+      document.getElementById('btn-dashboard').onclick = () => {
+        toast('Creando Dashboard... (puede tardar unos segundos)', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_crearDashboard();
+      };
+
+      // ── Backup ──
+      document.getElementById('btn-backup').onclick = () => {
+        toast('Creando copia de seguridad...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_hacerBackup();
+      };
+
+      // ── Exportar CSV ──
+      document.getElementById('btn-csv').onclick = () => {
+        toast('Generando CSV en Drive...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (!r?.success) return toastErr(r?.error || 'Error al exportar');
+            toast(`✅ CSV listo: <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">${r.name}</a>`, 'done');
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_exportarCSV();
+      };
+
+      // ── Actualizar mostrarStats para mostrar umbral personalizado ──
+      const _mostrarStatsOriginal = mostrarStats;
+      mostrarStats = function(s) {
+        _mostrarStatsOriginal(s);
+        if (s.umbral !== undefined && s.umbral !== 5) {
+          const badge = document.createElement('div');
+          badge.style.cssText = 'font-size:.74rem;background:#e8f0fe;color:#1a73e8;padding:5px 10px;border-radius:6px;margin-bottom:8px;font-weight:500';
+          badge.textContent = `⚖️ Umbral configurado: ${s.umbral} (no estándar)`;
+          const grid = document.getElementById('stats-grid');
+          grid.parentNode.insertBefore(badge, grid);
+        }
       };
     </script>
   </body>

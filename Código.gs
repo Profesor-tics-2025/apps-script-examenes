@@ -1085,3 +1085,277 @@ function wb_statsExtendidos() {
     };
   } catch(e) { return { success: false, error: e.message }; }
 }
+
+
+// ── AÚN MÁS FUNCIONALIDADES ───────────────────────────────────────────────────
+
+// Guarda el umbral de aprobado en propiedades del documento (persiste entre sesiones)
+function wb_guardarUmbral(umbral) {
+  try {
+    umbral = parseFloat(umbral);
+    if (isNaN(umbral) || umbral < 1 || umbral > 9.9)
+      throw new Error('El umbral debe estar entre 1.0 y 9.9');
+    PropertiesService.getDocumentProperties().setProperty('UMBRAL_APROBADO', String(umbral));
+    return { success: true, msg: `Umbral de aprobado fijado en ${umbral}.` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Lee el umbral de aprobado guardado (5.0 por defecto)
+function wb_leerUmbral() {
+  const u = parseFloat(PropertiesService.getDocumentProperties().getProperty('UMBRAL_APROBADO')) || 5;
+  return { success: true, umbral: u };
+}
+
+// Estadísticas usando el umbral de aprobado configurado + distribución + componentes
+function wb_statsConUmbral() {
+  try {
+    const umbral = parseFloat(PropertiesService.getDocumentProperties().getProperty('UMBRAL_APROBADO')) || 5;
+    const cfg = leerConfig();
+    const { filas } = _obtenerDatos(cfg);
+    const dist = _distribucionCalificaciones(filas);
+    const mediasComp = _mediasComponentes(filas, cfg);
+    const notas = filas.map(r => r.totalNota).sort((a, b) => a - b);
+    const aciertosList = filas.map(r => r.aciertos);
+    const media = notas.reduce((a, b) => a + b, 0) / notas.length;
+    const mediana = notas.length % 2 === 0
+      ? (notas[notas.length / 2 - 1] + notas[notas.length / 2]) / 2
+      : notas[Math.floor(notas.length / 2)];
+    const desviacion = Math.sqrt(notas.map(n => (n - media) ** 2).reduce((a, b) => a + b, 0) / notas.length);
+    return {
+      success: true, umbral,
+      total: filas.length, media, mediana, desviacion,
+      max: Math.max(...notas), min: Math.min(...notas),
+      mediaAciertos: aciertosList.reduce((a, b) => a + b, 0) / aciertosList.length,
+      aprobados: notas.filter(n => n >= umbral).length,
+      suspensos:  notas.filter(n => n < umbral).length,
+      dist,
+      componentes: mediasComp.map(m => ({
+        nombre: m.nombre, media: +m.media.toFixed(2), max: m.max, eficacia: +m.eficacia.toFixed(1)
+      }))
+    };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Suma puntos de bonificación a la nota final de todos los alumnos con nota > 0
+function wb_aplicarBonificacion(puntos, notaMax) {
+  try {
+    puntos  = parseFloat(puntos)  || 0;
+    notaMax = parseFloat(notaMax) || 10;
+    if (puntos <= 0) throw new Error('Los puntos de bonificación deben ser > 0.');
+    if (puntos > 3)  throw new Error('La bonificación máxima es 3 puntos para evitar errores accidentales.');
+    const cfg = leerConfig();
+    const ss  = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const filas = _leerFilas(hRes, cfg);
+    let aplicados = 0;
+    filas.forEach(({ rowNum, data }) => {
+      const nota = parseFloat(data[cfg.colTotal - 1]);
+      if (!isNaN(nota) && nota > 0) {
+        hRes.getRange(rowNum, cfg.colTotal).setValue(+Math.min(notaMax, nota + puntos).toFixed(2));
+        aplicados++;
+      }
+    });
+    _aplicarFormato(hRes, cfg, filas.length);
+    return { success: true, aplicados, msg: `+${puntos} pts aplicados a ${aplicados} alumnos (máx ${notaMax}).` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Copia la hoja Resultados como pestaña de backup con fecha y hora
+function wb_hacerBackup() {
+  try {
+    const ss   = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const d   = new Date();
+    const pad = n => n.toString().padStart(2, '0');
+    const ts  = `${pad(d.getDate())}${pad(d.getMonth()+1)}${d.getFullYear()}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    const hBackup = hRes.copyTo(ss);
+    hBackup.setName(`Backup_${ts}`);
+    hBackup.setTabColor('#e37400');
+    return { success: true, msg: `Copia guardada como pestaña "Backup_${ts}".` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Exporta Resultados como CSV (con BOM para Excel) a carpeta Juritecnia/Exportaciones en Drive
+function wb_exportarCSV() {
+  try {
+    const cfg = leerConfig();
+    const { filas } = _obtenerDatos(cfg);
+    const cab = ['"Alumno"', '"Preguntas"', '"Aciertos"', '"Examen Teórico"', '"Nota Teórica"'];
+    cfg.practicas.forEach(p => cab.push(`"${p.nombre}"`));
+    cab.push('"Nota Total"', '"Calificación"');
+    const rows = [cab.join(';')];
+    filas.forEach(r => {
+      rows.push([
+        `"${r.nombre}"`, r.preguntas, r.aciertos,
+        r.examenTeorico.toFixed(2), r.notaTeorica.toFixed(2),
+        ...r.practicas.map(p => p.toFixed(2)),
+        r.totalNota.toFixed(2), `"${_calificacion(r.totalNota)}"`
+      ].join(';'));
+    });
+    const csv    = '﻿' + rows.join('\r\n');
+    const fname  = `Notas_${_fechaHoy().replace(/\//g, '-')}.csv`;
+    const folder = _carpeta('Juritecnia/Exportaciones');
+    const existing = folder.getFilesByName(fname);
+    while (existing.hasNext()) existing.next().setTrashed(true);
+    const file = folder.createFile(Utilities.newBlob(csv, 'text/csv;charset=utf-8', fname));
+    return { success: true, url: file.getUrl(), name: fname };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Rellena las celdas vacías de "Preguntas" con el valor por defecto de la configuración
+function wb_rellenarPreguntas() {
+  try {
+    const cfg  = leerConfig();
+    const ss   = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const filas = _leerFilas(hRes, cfg);
+    let rellenados = 0;
+    filas.forEach(({ rowNum, data }) => {
+      const pregs = parseFloat(data[cfg.colPreguntas - 1]);
+      if (!pregs || isNaN(pregs)) {
+        hRes.getRange(rowNum, cfg.colPreguntas).setValue(cfg.preguntas);
+        rellenados++;
+      }
+    });
+    return { success: true, rellenados, msg: `${rellenados} celda(s) rellenadas con ${cfg.preguntas} preguntas.` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Marca como NP (No Presentado) los alumnos con aciertos = 0 y todas las prácticas a 0
+function wb_marcarNoPresentados() {
+  try {
+    const cfg  = leerConfig();
+    const ss   = SpreadsheetApp.getActiveSpreadsheet();
+    const hRes = ss.getSheetByName(HOJA_RES);
+    if (!hRes) throw new Error(`Hoja "${HOJA_RES}" no encontrada.`);
+    const filas = _leerFilas(hRes, cfg);
+    let marcados = 0;
+    filas.forEach(({ rowNum, data }) => {
+      const aciertos = parseFloat(data[cfg.colAciertos - 1]) || 0;
+      const pracsSum = cfg.colPracticas.reduce((s, col) => s + (parseFloat(data[col - 1]) || 0), 0);
+      if (aciertos === 0 && pracsSum === 0) {
+        const cell = hRes.getRange(rowNum, cfg.colTotal);
+        if (String(cell.getValue()).trim() !== 'NP') {
+          cell.setValue('NP').setBackground('#e8eaed').setFontColor('#5f6368')
+              .setFontWeight('bold').setHorizontalAlignment('center');
+          marcados++;
+        }
+      }
+    });
+    return { success: true, marcados, msg: `${marcados} alumno(s) marcados como NP (No Presentado).` };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Crea o actualiza la pestaña "Dashboard" con un cuadro de mando visual del grupo
+function wb_crearDashboard() {
+  try {
+    const cfg = leerConfig();
+    const { filas, stats } = _obtenerDatos(cfg);
+    const dist      = _distribucionCalificaciones(filas);
+    const mediasComp = _mediasComponentes(filas, cfg);
+    const umbral    = parseFloat(PropertiesService.getDocumentProperties().getProperty('UMBRAL_APROBADO')) || 5;
+    const ss        = SpreadsheetApp.getActiveSpreadsheet();
+    const HOJA_DASH = 'Dashboard';
+
+    let hDash = ss.getSheetByName(HOJA_DASH);
+    if (hDash) ss.deleteSheet(hDash);
+    hDash = ss.insertSheet(HOJA_DASH, 0);
+
+    const pct = n => stats.total > 0 ? Math.round(n / stats.total * 100) : 0;
+    const aprobU = filas.filter(r => r.totalNota >= umbral).length;
+
+    // ── Título ──
+    hDash.getRange('A1:G1').merge()
+      .setValue('⚖️  JURITECNIA · CUADRO DE MANDO')
+      .setFontSize(16).setFontWeight('bold').setFontColor('#1a73e8')
+      .setBackground('#e8f0fe').setHorizontalAlignment('center').setVerticalAlignment('middle');
+    hDash.setRowHeight(1, 44);
+    hDash.getRange('A2:G2').merge()
+      .setValue('Actualizado: ' + new Date().toLocaleString('es-ES') + '   |   Umbral aprobado: ' + umbral)
+      .setFontSize(10).setFontColor('#5f6368').setItalic(true)
+      .setBackground('#f8f9fa').setHorizontalAlignment('center');
+    hDash.setRowHeight(2, 22);
+
+    // ── KPIs ──
+    hDash.getRange('A4:G4').merge().setValue('INDICADORES PRINCIPALES')
+      .setFontSize(9).setFontWeight('bold').setFontColor('#5f6368').setBackground('#f1f3f4');
+    const kpis = [
+      ['Alumnos',    String(stats.total),                                    '#455a64','#e8eaed'],
+      ['Media',      stats.media.toFixed(2),                                 '#0f9d58','#e6f4ea'],
+      ['Mediana',    stats.mediana.toFixed(2),                               '#1a73e8','#e8f0fe'],
+      ['Desv. típ.', stats.desviacion.toFixed(2),                            '#7b1fa2','#f3e8fd'],
+      ['Aprobados',  `${aprobU} (${pct(aprobU)}%)`,                          '#0f9d58','#e6f4ea'],
+      ['Suspensos',  `${stats.total-aprobU} (${pct(stats.total-aprobU)}%)`,  '#c5221f','#fce8e6'],
+      ['Máx / Mín',  `${stats.max.toFixed(1)} / ${stats.min.toFixed(1)}`,    '#1a73e8','#e8f0fe'],
+    ];
+    kpis.forEach((k, i) => {
+      hDash.setColumnWidth(i + 1, 95);
+      hDash.getRange(5, i+1).setValue(k[1]).setFontSize(14).setFontWeight('bold')
+        .setFontColor(k[2]).setBackground(k[3]).setHorizontalAlignment('center').setVerticalAlignment('middle');
+      hDash.getRange(6, i+1).setValue(k[0]).setFontSize(9).setFontColor('#5f6368')
+        .setBackground(k[3]).setHorizontalAlignment('center');
+    });
+    hDash.setRowHeight(5, 40); hDash.setRowHeight(6, 20);
+
+    // ── Distribución (cols A–C) ──
+    hDash.getRange('A8:C8').merge().setValue('DISTRIBUCIÓN DE CALIFICACIONES')
+      .setFontSize(9).setFontWeight('bold').setFontColor('#5f6368').setBackground('#f1f3f4');
+    [['Sobresaliente  ≥ 9', dist.sobresaliente,'#137333','#e6f4ea'],
+     ['Notable  7 – 8.99',  dist.notable,      '#1967d2','#e8f0fe'],
+     ['Bien  6 – 6.99',     dist.bien,         '#b45309','#fef7e0'],
+     ['Aprobado  5 – 5.99', dist.aprobado,     '#b45309','#fff8e1'],
+     ['Suspenso  < 5',      dist.suspenso,     '#c5221f','#fce8e6'],
+    ].forEach((d, i) => {
+      const row = 9 + i;
+      hDash.getRange(row,1).setValue(d[0]).setFontColor(d[2]).setFontWeight('bold').setBackground(d[3]);
+      hDash.getRange(row,2).setValue(d[1]).setHorizontalAlignment('center').setFontWeight('bold').setFontColor(d[2]).setBackground(d[3]);
+      hDash.getRange(row,3).setValue(pct(d[1]) + ' %').setHorizontalAlignment('center').setFontColor('#5f6368').setBackground(d[3]);
+      hDash.setRowHeight(row, 24);
+    });
+
+    // ── Componentes (cols E–G) ──
+    hDash.getRange('E8:G8').merge().setValue('EFICACIA POR COMPONENTE')
+      .setFontSize(9).setFontWeight('bold').setFontColor('#5f6368').setBackground('#f1f3f4');
+    mediasComp.forEach((m, i) => {
+      const row   = 9 + i;
+      const color = m.eficacia >= 70 ? '#137333' : m.eficacia >= 50 ? '#b45309' : '#c5221f';
+      hDash.getRange(row,5).setValue(m.nombre).setFontWeight('bold');
+      hDash.getRange(row,6).setValue(`${m.media.toFixed(2)} / ${m.max}`).setHorizontalAlignment('center');
+      hDash.getRange(row,7).setValue(m.eficacia.toFixed(1) + ' %').setFontWeight('bold')
+        .setFontColor(color).setHorizontalAlignment('center');
+      hDash.setRowHeight(row, 24);
+    });
+
+    // ── Top 5 y suspensos ──
+    const filaExtra = 16;
+    hDash.getRange(filaExtra, 1, 1, 3).merge().setValue('🏆  TOP 5 ALUMNOS')
+      .setFontSize(9).setFontWeight('bold').setFontColor('#1967d2').setBackground('#e8f0fe');
+    hDash.getRange(filaExtra, 5, 1, 3).merge().setValue('⚠️  ALUMNOS SUSPENSOS')
+      .setFontSize(9).setFontWeight('bold').setFontColor('#c5221f').setBackground('#fce8e6');
+
+    const sorted = [...filas].sort((a, b) => b.totalNota - a.totalNota);
+    sorted.slice(0, 5).forEach((r, i) => {
+      const row = filaExtra + 1 + i;
+      const { bg, fg } = _colorNota(r.totalNota);
+      hDash.getRange(row,1).setValue(`${i+1}. ${r.nombre}`);
+      hDash.getRange(row,2).setValue(r.totalNota.toFixed(2)).setFontWeight('bold').setFontColor(fg).setBackground(bg).setHorizontalAlignment('center');
+      hDash.getRange(row,3).setValue(_calificacion(r.totalNota)).setFontColor(fg);
+      hDash.setRowHeight(row, 22);
+    });
+    sorted.filter(r => r.totalNota < umbral).sort((a, b) => a.totalNota - b.totalNota).forEach((r, i) => {
+      const row = filaExtra + 1 + i;
+      hDash.getRange(row,5).setValue(r.nombre);
+      hDash.getRange(row,6).setValue(r.totalNota.toFixed(2)).setFontWeight('bold')
+        .setFontColor('#c5221f').setBackground('#fce8e6').setHorizontalAlignment('center');
+      hDash.getRange(row,7).setValue('Suspenso').setFontColor('#c5221f');
+      hDash.setRowHeight(row, 22);
+    });
+
+    hDash.setTabColor('#1a73e8');
+    ss.setActiveSheet(hDash);
+    return { success: true, msg: 'Dashboard creado/actualizado correctamente.' };
+  } catch(e) { return { success: false, error: e.message }; }
+}
