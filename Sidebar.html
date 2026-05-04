@@ -432,8 +432,39 @@
           </div>
           <label class="chk-row"><input type="checkbox" id="chk-barajar-preg" checked> Barajar orden de preguntas</label>
           <label class="chk-row"><input type="checkbox" id="chk-barajar-opc"  checked> Barajar opciones A / B / C / D</label>
-          <label class="chk-row"><input type="checkbox" id="chk-incluir-clave"> Añadir hoja de respuestas al final</label>
+          <label class="chk-row"><input type="checkbox" id="chk-incluir-clave" checked> Añadir hoja de respuestas al final</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span class="cfg-lbl" style="margin-bottom:0;white-space:nowrap">Nº versiones:</span>
+            <input type="number" id="inp-doc-versiones" class="cfg-inp" value="1" min="1" max="4" style="width:60px;text-align:center;margin-bottom:0">
+            <span style="font-size:.72rem;color:var(--gris)">1 = una sola · 2-4 = Modelos A/B/C/D</span>
+          </div>
           <button class="btn btn-morado" id="btn-generar-doc" style="margin-top:4px">📄 Generar Doc del examen</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🎯 Generar Google Form quiz</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            Crea un formulario de Google con autocorrección. Las opciones se barajan aleatoriamente.
+          </p>
+          <span class="cfg-lbl">Título del Form</span>
+          <input type="text" id="inp-form-titulo" class="cfg-inp" placeholder="Examen Quiz Tema 1">
+          <span class="cfg-lbl">Descripción (opcional)</span>
+          <input type="text" id="inp-form-desc" class="cfg-inp" placeholder="Duración: 30 min">
+          <div style="display:flex;gap:8px;margin-bottom:0">
+            <div style="flex:1">
+              <span class="cfg-lbl">Nº preguntas</span>
+              <input type="number" id="inp-form-npreg" class="cfg-inp" value="20" min="1" max="200" style="text-align:center">
+            </div>
+            <div style="flex:1">
+              <span class="cfg-lbl">Puntos/pregunta</span>
+              <input type="number" id="inp-form-puntaje" class="cfg-inp" value="1" min="1" max="10" style="text-align:center">
+            </div>
+          </div>
+          <span class="cfg-lbl">Filtrar tema (vacío = todas)</span>
+          <input type="text" id="inp-form-tema" class="cfg-inp" placeholder="p.ej: Geografía">
+          <label class="chk-row"><input type="checkbox" id="chk-form-opc"  checked> Barajar opciones A / B / C / D</label>
+          <label class="chk-row"><input type="checkbox" id="chk-form-preg" checked> Barajar orden de preguntas</label>
+          <button class="btn btn-verde" id="btn-crear-form" style="margin-top:4px">🎯 Crear Google Form quiz</button>
         </div>
 
         <div class="card">
@@ -978,8 +1009,9 @@
           .wb_crearHojaPreguntas();
       };
 
-      // ── 🧩 TEST: Generar Doc de examen ──
+      // ── 🧩 TEST: Generar Doc de examen (1 versión o A/B/C/D) ──
       document.getElementById('btn-generar-doc').onclick = () => {
+        const nVer = parseInt(document.getElementById('inp-doc-versiones').value) || 1;
         const config = {
           titulo:       document.getElementById('inp-doc-titulo').value.trim() || 'Cuestionario',
           institucion:  document.getElementById('inp-doc-inst').value.trim(),
@@ -994,15 +1026,59 @@
           layout:       document.getElementById('sel-layout').value,
           colorAcento:  document.getElementById('inp-color-acento').value,
         };
-        toast('Generando documento de examen... (puede tardar unos segundos)', 'load'); lock(true);
+        if (nVer > 1) {
+          config.nVersiones = nVer;
+          toast(`Generando ${nVer} versiones del examen (Modelo A–${['','B','C','D'][nVer-1]||'D'})... puede tardar`, 'load');
+          lock(true);
+          google.script.run
+            .withSuccessHandler(r => {
+              lock(false);
+              if (!r?.success) return toastErr(r?.error);
+              const links = r.urls.map(v =>
+                `<a href="${v.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Modelo ${v.modelo}</a>`
+              ).join(' · ');
+              toast(`✅ ${r.nVersiones} versiones generadas (${r.nPreg} preguntas c/u): ${links}`, 'done');
+            })
+            .withFailureHandler(e => { lock(false); toastErr(e.message); })
+            .wb_generarVariasVersiones(config);
+        } else {
+          toast('Generando documento de examen... (puede tardar unos segundos)', 'load'); lock(true);
+          google.script.run
+            .withSuccessHandler(r => {
+              lock(false);
+              if (!r?.success) return toastErr(r?.error);
+              toast(`✅ Examen generado (${r.nPreg} preguntas). <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Abrir Doc</a>`, 'done');
+            })
+            .withFailureHandler(e => { lock(false); toastErr(e.message); })
+            .wb_generarTestDoc(config);
+        }
+      };
+
+      // ── 🧩 TEST: Generar Google Form quiz ──
+      document.getElementById('btn-crear-form').onclick = () => {
+        const config = {
+          titulo:      document.getElementById('inp-form-titulo').value.trim() || 'Quiz',
+          descripcion: document.getElementById('inp-form-desc').value.trim(),
+          nPreg:       parseInt(document.getElementById('inp-form-npreg').value) || 20,
+          puntaje:     parseInt(document.getElementById('inp-form-puntaje').value) || 1,
+          temaFiltro:  document.getElementById('inp-form-tema').value.trim(),
+          barajarOpc:  document.getElementById('chk-form-opc').checked,
+          barajarPreg: document.getElementById('chk-form-preg').checked,
+        };
+        toast('Creando Google Form quiz... (puede tardar unos segundos)', 'load'); lock(true);
         google.script.run
           .withSuccessHandler(r => {
             lock(false);
             if (!r?.success) return toastErr(r?.error);
-            toast(`✅ Examen generado (${r.nPreg} preguntas). <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Abrir Doc</a>`, 'done');
+            toast(
+              `✅ Form creado (${r.nPreg} preguntas). ` +
+              `<a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Responder</a> · ` +
+              `<a href="${r.editUrl}" target="_blank" style="color:#a8e6cf;font-weight:bold">Editar</a>`,
+              'done'
+            );
           })
           .withFailureHandler(e => { lock(false); toastErr(e.message); })
-          .wb_generarTestDoc(config);
+          .wb_crearFormQuiz(config);
       };
 
       // ── 🧩 TEST: Guardar diseño ──

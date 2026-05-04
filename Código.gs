@@ -1568,3 +1568,134 @@ function wb_guardarDiseno(config) {
     return { success: true, msg: 'Diseño guardado correctamente.' };
   } catch(e) { return { success: false, error: e.message }; }
 }
+
+// Crea un Google Form tipo quiz con preguntas y opciones barajadas
+function wb_crearFormQuiz(config) {
+  try {
+    const cfg = Object.assign({
+      titulo: 'Examen Quiz', descripcion: '', nPreg: 20,
+      barajarOpc: true, barajarPreg: true, puntaje: 1, temaFiltro: ''
+    }, config || {});
+
+    const preguntas = _leerPreguntasTest(
+      cfg.nPreg, cfg.barajarPreg, cfg.barajarOpc, cfg.temaFiltro
+    );
+
+    const form = FormApp.create(cfg.titulo);
+    form.setDescription(cfg.descripcion || '');
+    form.setIsQuiz(true);
+    form.setCollectEmail(false);
+
+    preguntas.forEach(p => {
+      const item = form.addMultipleChoiceItem();
+      item.setTitle(p.enunciado);
+      item.setPoints(cfg.puntaje || 1);
+      item.setChoices(p.opciones.map(o => item.createChoice(o.texto, o.esCorrecta)));
+    });
+
+    try {
+      const archivo = DriveApp.getFileById(form.getId());
+      const raiz    = DriveApp.getRootFolder();
+      const iJ      = raiz.getFoldersByName('Juritecnia');
+      const carpJ   = iJ.hasNext() ? iJ.next() : raiz.createFolder('Juritecnia');
+      const iT      = carpJ.getFoldersByName('Tests');
+      const carpT   = iT.hasNext() ? iT.next() : carpJ.createFolder('Tests');
+      carpT.addFile(archivo);
+      DriveApp.getRootFolder().removeFile(archivo);
+    } catch(e2) {}
+
+    return { success: true, url: form.getPublishedUrl(), editUrl: form.getEditUrl(), nPreg: preguntas.length };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Genera N versiones (Modelo A, B, C, D) del examen como Docs separados con barajados independientes
+function wb_generarVariasVersiones(config) {
+  try {
+    const cfg = Object.assign({
+      titulo: 'Examen', institucion: '', asignatura: '', fecha: '',
+      nPreg: 20, nVersiones: 2, fuente: 'Arial',
+      colorAcento: '#1a73e8', layout: '1col', incluirClave: true, temaFiltro: ''
+    }, config || {});
+
+    const nVer       = Math.min(Math.max(parseInt(cfg.nVersiones) || 2, 1), 4);
+    const letras     = ['A', 'B', 'C', 'D'];
+    const fuente     = cfg.fuente      || 'Arial';
+    const color      = cfg.colorAcento || '#1a73e8';
+    const urls       = [];
+
+    let carpT;
+    try {
+      const raiz  = DriveApp.getRootFolder();
+      const iJ    = raiz.getFoldersByName('Juritecnia');
+      const carpJ = iJ.hasNext() ? iJ.next() : raiz.createFolder('Juritecnia');
+      const iT    = carpJ.getFoldersByName('Tests');
+      carpT = iT.hasNext() ? iT.next() : carpJ.createFolder('Tests');
+    } catch(e2) { carpT = DriveApp.getRootFolder(); }
+
+    for (let v = 0; v < nVer; v++) {
+      const modelo    = letras[v];
+      const preguntas = _leerPreguntasTest(cfg.nPreg, true, true, cfg.temaFiltro);
+      const ahora     = Utilities.formatDate(new Date(), 'Europe/Madrid', 'dd-MM-yyyy HH:mm');
+      const nombre    = `${cfg.titulo} – Modelo ${modelo} – ${ahora}`;
+
+      const doc  = DocumentApp.create(nombre);
+      const body = doc.getBody();
+
+      if (cfg.institucion) {
+        const p = body.appendParagraph(cfg.institucion);
+        p.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        p.editAsText().setFontFamily(fuente).setFontSize(15).setBold(true).setForegroundColor(color);
+      }
+      const pMod = body.appendParagraph(`${cfg.titulo}  —  MODELO ${modelo}`);
+      pMod.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+      pMod.editAsText().setFontFamily(fuente).setFontSize(14).setBold(true).setForegroundColor(color);
+
+      const sub = [cfg.asignatura, cfg.fecha].filter(Boolean).join('   ·   ');
+      if (sub) {
+        const pSub = body.appendParagraph(sub);
+        pSub.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        pSub.editAsText().setFontFamily(fuente).setFontSize(11).setForegroundColor('#5f6368');
+      }
+      body.appendParagraph('─'.repeat(68)).editAsText()
+        .setFontFamily('Courier New').setFontSize(8).setForegroundColor('#cccccc');
+      body.appendParagraph(`Nombre: ${'_'.repeat(42)}    Grupo: ${'_'.repeat(18)}`).editAsText()
+        .setFontFamily(fuente).setFontSize(11).setForegroundColor('#202124');
+      body.appendParagraph('').editAsText().setFontSize(5);
+
+      if (cfg.layout === '2col') {
+        const mitad = Math.ceil(preguntas.length / 2);
+        const tabla = body.appendTable([['', '']]);
+        tabla.setBorderWidth(0);
+        preguntas.slice(0, mitad).forEach((p, i) =>
+          _escribirPregDocx(tabla.getRow(0).getCell(0), p, i, fuente, color));
+        preguntas.slice(mitad).forEach((p, i) =>
+          _escribirPregDocx(tabla.getRow(0).getCell(1), p, mitad + i, fuente, color));
+      } else {
+        preguntas.forEach((p, i) => _escribirPregDocx(body, p, i, fuente, color));
+      }
+
+      if (cfg.incluirClave) {
+        const pBreak = body.appendParagraph(`CLAVE – MODELO ${modelo}`);
+        pBreak.setPageBreakBefore(true);
+        pBreak.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+        pBreak.editAsText().setFontFamily(fuente).setFontSize(14).setBold(true).setForegroundColor(color);
+        body.appendParagraph('').editAsText().setFontSize(6);
+        const clave = preguntas.map((p, i) => `${i + 1}. ${p.correctaLetra}`);
+        for (let i = 0; i < clave.length; i += 6) {
+          body.appendParagraph(clave.slice(i, i + 6).join('        ')).editAsText()
+            .setFontFamily(fuente).setFontSize(12).setBold(false).setForegroundColor('#202124');
+        }
+      }
+
+      doc.saveAndClose();
+      try {
+        const archivo = DriveApp.getFileById(doc.getId());
+        carpT.addFile(archivo);
+        DriveApp.getRootFolder().removeFile(archivo);
+      } catch(e2) {}
+      urls.push({ modelo, url: doc.getUrl() });
+    }
+
+    return { success: true, urls, nVersiones: nVer, nPreg: cfg.nPreg };
+  } catch(e) { return { success: false, error: e.message }; }
+}
