@@ -38,6 +38,8 @@ function onOpen() {
     .addSeparator()
     .addItem('🔑 Probar conexión Gemini',      'probarGemini')
     .addItem('📈 Ver estadísticas',            'verEstadisticas')
+    .addSeparator()
+    .addItem('🧩 Crear banco de preguntas',    'abrirHojaPreguntas')
     .addItem('📋 Abrir panel lateral',         'mostrarSidebar')
     .addToUi();
 }
@@ -910,6 +912,7 @@ function wb_testGemini() {
 // ── NUEVAS FUNCIONALIDADES ────────────────────────────────────────────────────
 
 const HOJA_HIST = 'Historial';
+const HOJA_PREG = 'Preguntas';
 
 // Ranking de alumnos ordenado por nota final (desc)
 function wb_rankingAlumnos() {
@@ -1357,5 +1360,211 @@ function wb_crearDashboard() {
     hDash.setTabColor('#1a73e8');
     ss.setActiveSheet(hDash);
     return { success: true, msg: 'Dashboard creado/actualizado correctamente.' };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+
+// ── BANCO DE PREGUNTAS Y GENERACIÓN DE TEST ───────────────────────────────────
+
+// Acceso rápido desde menú
+function abrirHojaPreguntas() {
+  const r = wb_crearHojaPreguntas();
+  if (r.success) {
+    const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_PREG);
+    if (hoja) SpreadsheetApp.getActiveSpreadsheet().setActiveSheet(hoja);
+  }
+}
+
+// Baraja un array con Fisher-Yates y devuelve una copia
+function _barajar(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Crea la hoja "Preguntas" con cabeceras y ejemplos si no existe
+function wb_crearHojaPreguntas() {
+  try {
+    const ss   = SpreadsheetApp.getActiveSpreadsheet();
+    let hoja   = ss.getSheetByName(HOJA_PREG);
+    const nueva = !hoja;
+    if (nueva) {
+      hoja = ss.insertSheet(HOJA_PREG);
+      const cab = ['#','Enunciado','Opción A','Opción B','Opción C','Opción D','Correcta','Tema'];
+      hoja.getRange(1,1,1,8).setValues([cab])
+        .setFontWeight('bold').setBackground('#1a73e8').setFontColor('#ffffff');
+      hoja.setFrozenRows(1);
+      const ej = [
+        [1,'¿Cuál es la capital de España?','Madrid','Barcelona','Sevilla','Valencia','A','Geografía'],
+        [2,'¿Cuánto es 5 × 5?','20','25','30','15','B','Matemáticas'],
+        [3,'¿Fórmula química del agua?','CO₂','H₂O₂','H₂O','NaCl','C','Ciencias'],
+      ];
+      hoja.getRange(2,1,3,8).setValues(ej);
+      hoja.setColumnWidth(1,40);  hoja.setColumnWidth(2,260);
+      hoja.setColumnWidth(3,130); hoja.setColumnWidth(4,130);
+      hoja.setColumnWidth(5,130); hoja.setColumnWidth(6,130);
+      hoja.setColumnWidth(7,75);  hoja.setColumnWidth(8,110);
+      hoja.setTabColor('#0f9d58');
+    }
+    const url = ss.getUrl() + '#gid=' + hoja.getSheetId();
+    return { success: true, url, nueva };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Lee, filtra, baraja y devuelve preguntas con opciones reordenadas
+function _leerPreguntasTest(nPreg, barajarPreg, barajarOpc, temaFiltro) {
+  const ss   = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName(HOJA_PREG);
+  if (!hoja) throw new Error('No existe la hoja "Preguntas". Créala desde la pestaña 🧩 Test.');
+
+  let filas = hoja.getDataRange().getValues().slice(1)
+    .filter(r => r[1] && String(r[1]).trim());
+  if (!filas.length) throw new Error('La hoja "Preguntas" está vacía. Añade preguntas primero.');
+
+  if (temaFiltro && temaFiltro.trim()) {
+    const t = temaFiltro.trim().toLowerCase();
+    filas = filas.filter(r => String(r[7]||'').toLowerCase().includes(t));
+    if (!filas.length) throw new Error(`No hay preguntas con tema "${temaFiltro}".`);
+  }
+
+  if (barajarPreg) filas = _barajar(filas);
+  filas = filas.slice(0, nPreg || 20);
+
+  const letras = ['A','B','C','D'];
+  return filas.map(r => {
+    const opciones   = [String(r[2]||''), String(r[3]||''), String(r[4]||''), String(r[5]||'')];
+    const corOri     = letras.indexOf(String(r[6]||'A').toUpperCase().trim());
+    const idxOri     = corOri < 0 ? 0 : corOri;
+
+    let opcFin;
+    if (barajarOpc) {
+      const idxs = _barajar([0,1,2,3]);
+      opcFin = idxs.map((si, ni) => ({ texto: opciones[si], esCorrecta: si === idxOri }));
+    } else {
+      opcFin = opciones.map((t, i) => ({ texto: t, esCorrecta: i === idxOri }));
+    }
+    const nuevaLetra = letras[opcFin.findIndex(o => o.esCorrecta)];
+    return { enunciado: String(r[1]), opciones: opcFin, correctaLetra: nuevaLetra };
+  });
+}
+
+// Escribe una pregunta con sus opciones en un container (Body o TableCell)
+function _escribirPregDocx(container, p, idx, fuente, colorAcento) {
+  const letras = ['A','B','C','D'];
+  const qPara  = container.appendParagraph(`${idx + 1}.  ${p.enunciado}`);
+  qPara.editAsText()
+    .setFontFamily(fuente).setFontSize(11).setBold(true).setForegroundColor('#202124');
+  p.opciones.forEach((o, j) => {
+    const oPara = container.appendParagraph(`    ${letras[j]})  ${o.texto}`);
+    oPara.editAsText()
+      .setFontFamily(fuente).setFontSize(11).setBold(false).setForegroundColor('#3c4043');
+  });
+  container.appendParagraph('').editAsText().setFontSize(5);
+}
+
+// Genera un Google Doc imprimible del cuestionario con opciones barajadas
+function wb_generarTestDoc(config) {
+  try {
+    const cfg = Object.assign({
+      titulo:'Cuestionario', institucion:'', asignatura:'', fecha:'',
+      nPreg:20, barajar:true, barajarOpc:true, fuente:'Arial',
+      colorAcento:'#1a73e8', layout:'1col', incluirClave:false, temaFiltro:''
+    }, config || {});
+
+    const preguntas = _leerPreguntasTest(
+      cfg.nPreg, cfg.barajar, cfg.barajarOpc, cfg.temaFiltro
+    );
+    const fuente = cfg.fuente   || 'Arial';
+    const color  = cfg.colorAcento || '#1a73e8';
+    const ahora  = Utilities.formatDate(new Date(),'Europe/Madrid','dd-MM-yyyy HH:mm');
+    const nombre = `${cfg.titulo} – ${ahora}`;
+
+    const doc  = DocumentApp.create(nombre);
+    const body = doc.getBody();
+
+    // ── Cabecera ──
+    if (cfg.institucion) {
+      const pInst = body.appendParagraph(cfg.institucion);
+      pInst.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+      pInst.editAsText().setFontFamily(fuente).setFontSize(15).setBold(true).setForegroundColor(color);
+    }
+    const pTit = body.appendParagraph(cfg.titulo);
+    pTit.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+    pTit.editAsText().setFontFamily(fuente).setFontSize(13).setBold(false).setForegroundColor('#202124');
+
+    const sub = [cfg.asignatura, cfg.fecha].filter(Boolean).join('   ·   ');
+    if (sub) {
+      const pSub = body.appendParagraph(sub);
+      pSub.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+      pSub.editAsText().setFontFamily(fuente).setFontSize(11).setForegroundColor('#5f6368');
+    }
+    body.appendParagraph('─'.repeat(68)).editAsText()
+      .setFontFamily('Courier New').setFontSize(8).setForegroundColor('#cccccc');
+    body.appendParagraph(`Nombre: ${'_'.repeat(42)}    Grupo: ${'_'.repeat(18)}`).editAsText()
+      .setFontFamily(fuente).setFontSize(11).setForegroundColor('#202124');
+    body.appendParagraph('').editAsText().setFontSize(5);
+
+    // ── Preguntas ──
+    if (cfg.layout === '2col') {
+      const mitad = Math.ceil(preguntas.length / 2);
+      const col1  = preguntas.slice(0, mitad);
+      const col2  = preguntas.slice(mitad);
+      const tabla = body.appendTable([['', '']]);
+      tabla.setBorderWidth(0);
+      col1.forEach((p, i) => _escribirPregDocx(tabla.getRow(0).getCell(0), p, i,       fuente, color));
+      col2.forEach((p, i) => _escribirPregDocx(tabla.getRow(0).getCell(1), p, mitad+i, fuente, color));
+    } else {
+      preguntas.forEach((p, i) => _escribirPregDocx(body, p, i, fuente, color));
+    }
+
+    // ── Clave de respuestas ──
+    if (cfg.incluirClave) {
+      const pBreak = body.appendParagraph('CLAVE DE RESPUESTAS');
+      pBreak.setPageBreakBefore(true);
+      pBreak.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+      pBreak.editAsText().setFontFamily(fuente).setFontSize(14).setBold(true).setForegroundColor(color);
+      body.appendParagraph('').editAsText().setFontSize(6);
+      const clave = preguntas.map((p, i) => `${i+1}. ${p.correctaLetra}`);
+      for (let i = 0; i < clave.length; i += 6) {
+        body.appendParagraph(clave.slice(i, i+6).join('        ')).editAsText()
+          .setFontFamily(fuente).setFontSize(12).setBold(false).setForegroundColor('#202124');
+      }
+    }
+
+    doc.saveAndClose();
+
+    // ── Mover a Juritecnia/Tests en Drive ──
+    try {
+      const archivo = DriveApp.getFileById(doc.getId());
+      const raiz    = DriveApp.getRootFolder();
+      const iJ      = raiz.getFoldersByName('Juritecnia');
+      const carpJ   = iJ.hasNext() ? iJ.next() : raiz.createFolder('Juritecnia');
+      const iT      = carpJ.getFoldersByName('Tests');
+      const carpT   = iT.hasNext() ? iT.next() : carpJ.createFolder('Tests');
+      carpT.addFile(archivo);
+      DriveApp.getRootFolder().removeFile(archivo);
+    } catch(e2) { /* si falla mover, queda en My Drive */ }
+
+    return { success: true, url: doc.getUrl(), nPreg: preguntas.length };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Lee la config de diseño guardada en DocumentProperties
+function wb_leerDiseno() {
+  try {
+    const raw = PropertiesService.getDocumentProperties().getProperty('DISENO_TEST');
+    return { success: true, diseno: raw ? JSON.parse(raw) : {} };
+  } catch(e) { return { success: false, error: e.message }; }
+}
+
+// Guarda la config de diseño en DocumentProperties
+function wb_guardarDiseno(config) {
+  try {
+    PropertiesService.getDocumentProperties()
+      .setProperty('DISENO_TEST', JSON.stringify(config));
+    return { success: true, msg: 'Diseño guardado correctamente.' };
   } catch(e) { return { success: false, error: e.message }; }
 }

@@ -171,6 +171,31 @@
       .comp-row-stat { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:.78rem; gap:6px; }
       .eficacia-bar { height:6px; background:#e0e0e0; border-radius:4px; flex:1; overflow:hidden; }
       .eficacia-fill { height:100%; border-radius:4px; }
+
+      /* Test tab */
+      .cfg-lbl { font-size:.75rem; color:var(--gris); margin-bottom:3px; display:block; font-weight:500; }
+      .cfg-inp {
+        width:100%; padding:7px 8px; border:1px solid var(--borde); border-radius:7px;
+        font-size:.82rem; font-family:inherit; background:var(--fondo); color:#202124;
+        margin-bottom:8px; transition:border-color .15s;
+      }
+      .cfg-inp:focus { outline:none; border-color:var(--azul); background:white; }
+      .cfg-date { cursor:pointer; }
+      .cfg-select {
+        width:100%; padding:7px 8px; border:1px solid var(--borde); border-radius:7px;
+        font-size:.82rem; font-family:inherit; background:var(--fondo); color:#202124;
+        margin-bottom:8px; cursor:pointer; transition:border-color .15s;
+      }
+      .cfg-select:focus { outline:none; border-color:var(--azul); }
+      .cfg-color {
+        width:100%; height:36px; border:1px solid var(--borde); border-radius:7px;
+        padding:2px 4px; cursor:pointer; margin-bottom:8px; background:white;
+      }
+      .chk-row {
+        display:flex; align-items:center; gap:8px; margin-bottom:7px;
+        font-size:.82rem; color:var(--gris); cursor:pointer;
+      }
+      .chk-row input[type="checkbox"] { width:15px; height:15px; accent-color:var(--azul); flex-shrink:0; }
     </style>
   </head>
   <body>
@@ -186,6 +211,7 @@
       <div class="tab"        data-tab="docs">📁 Docs</div>
       <div class="tab"        data-tab="gemini">🤖 Gemini</div>
       <div class="tab"        data-tab="stats">📈 Stats</div>
+      <div class="tab"        data-tab="test">🧩 Test</div>
     </div>
 
     <div class="scroll">
@@ -371,6 +397,68 @@
           <div id="ranking-content" style="display:none;margin-top:10px;max-height:300px;overflow-y:auto"></div>
           <div id="riesgo-content"  style="display:none;margin-top:10px"></div>
         </div>
+      </div>
+
+      <!-- TAB: TEST -->
+      <div class="panel" id="tab-test">
+
+        <div class="card">
+          <div class="card-title">📋 Banco de preguntas</div>
+          <p style="font-size:.78rem;color:var(--gris);margin-bottom:8px;line-height:1.5">
+            La hoja <b>Preguntas</b> tiene columnas: Enunciado, Opción A/B/C/D, <b>Correcta</b> (A/B/C/D), Tema.
+          </p>
+          <button class="btn btn-verde" id="btn-crear-banco">📋 Crear / abrir hoja Preguntas</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📄 Generar examen · Google Doc</div>
+          <span class="cfg-lbl">Título del examen</span>
+          <input type="text" id="inp-doc-titulo" class="cfg-inp" placeholder="Examen Parcial Tema 1">
+          <span class="cfg-lbl">Institución / Centro</span>
+          <input type="text" id="inp-doc-inst"   class="cfg-inp" placeholder="Universidad Juritecnia">
+          <span class="cfg-lbl">Asignatura</span>
+          <input type="text" id="inp-doc-asign"  class="cfg-inp" placeholder="Derecho Civil">
+          <span class="cfg-lbl">Fecha</span>
+          <input type="date" id="inp-doc-fecha"  class="cfg-inp cfg-date">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="flex:1">
+              <span class="cfg-lbl">Nº preguntas</span>
+              <input type="number" id="inp-doc-npreg" class="cfg-inp" value="20" min="1" max="200" style="text-align:center">
+            </div>
+            <div style="flex:1">
+              <span class="cfg-lbl">Filtrar tema</span>
+              <input type="text" id="inp-doc-tema" class="cfg-inp" placeholder="vacío = todas">
+            </div>
+          </div>
+          <label class="chk-row"><input type="checkbox" id="chk-barajar-preg" checked> Barajar orden de preguntas</label>
+          <label class="chk-row"><input type="checkbox" id="chk-barajar-opc"  checked> Barajar opciones A / B / C / D</label>
+          <label class="chk-row"><input type="checkbox" id="chk-incluir-clave"> Añadir hoja de respuestas al final</label>
+          <button class="btn btn-morado" id="btn-generar-doc" style="margin-top:4px">📄 Generar Doc del examen</button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">🎨 Diseño del documento</div>
+          <span class="cfg-lbl">Fuente</span>
+          <select id="sel-fuente" class="cfg-select">
+            <option value="Arial">Arial</option>
+            <option value="Times New Roman">Times New Roman</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Verdana">Verdana</option>
+            <option value="Courier New">Courier New</option>
+          </select>
+          <span class="cfg-lbl">Layout</span>
+          <select id="sel-layout" class="cfg-select">
+            <option value="1col">1 columna</option>
+            <option value="2col">2 columnas</option>
+          </select>
+          <span class="cfg-lbl">Color de acento</span>
+          <input type="color" id="inp-color-acento" class="cfg-color" value="#1a73e8">
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <button class="btn btn-azul"    id="btn-guardar-diseno" style="flex:1;margin-bottom:0">💾 Guardar diseño</button>
+            <button class="btn btn-outline" id="btn-cargar-diseno"  style="flex:1;margin-bottom:0">📂 Cargar</button>
+          </div>
+        </div>
+
       </div>
 
     </div><!-- /scroll -->
@@ -873,6 +961,110 @@
           .withFailureHandler(e => { lock(false); toastErr(e.message); })
           .wb_exportarCSV();
       };
+
+      // ── 🧩 TEST: Banco de preguntas ──
+      document.getElementById('btn-crear-banco').onclick = () => {
+        toast('Preparando hoja de preguntas...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (!r?.success) return toastErr(r?.error);
+            const msg = r.nueva
+              ? `✅ Hoja "Preguntas" creada con ejemplos. <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Abrirla</a>`
+              : `✅ La hoja ya existe. <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Abrirla</a>`;
+            toast(msg, 'done');
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_crearHojaPreguntas();
+      };
+
+      // ── 🧩 TEST: Generar Doc de examen ──
+      document.getElementById('btn-generar-doc').onclick = () => {
+        const config = {
+          titulo:       document.getElementById('inp-doc-titulo').value.trim() || 'Cuestionario',
+          institucion:  document.getElementById('inp-doc-inst').value.trim(),
+          asignatura:   document.getElementById('inp-doc-asign').value.trim(),
+          fecha:        document.getElementById('inp-doc-fecha').value,
+          nPreg:        parseInt(document.getElementById('inp-doc-npreg').value) || 20,
+          temaFiltro:   document.getElementById('inp-doc-tema').value.trim(),
+          barajar:      document.getElementById('chk-barajar-preg').checked,
+          barajarOpc:   document.getElementById('chk-barajar-opc').checked,
+          incluirClave: document.getElementById('chk-incluir-clave').checked,
+          fuente:       document.getElementById('sel-fuente').value,
+          layout:       document.getElementById('sel-layout').value,
+          colorAcento:  document.getElementById('inp-color-acento').value,
+        };
+        toast('Generando documento de examen... (puede tardar unos segundos)', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => {
+            lock(false);
+            if (!r?.success) return toastErr(r?.error);
+            toast(`✅ Examen generado (${r.nPreg} preguntas). <a href="${r.url}" target="_blank" style="color:#a8e6cf;font-weight:bold">Abrir Doc</a>`, 'done');
+          })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_generarTestDoc(config);
+      };
+
+      // ── 🧩 TEST: Guardar diseño ──
+      document.getElementById('btn-guardar-diseno').onclick = () => {
+        const config = {
+          fuente:      document.getElementById('sel-fuente').value,
+          layout:      document.getElementById('sel-layout').value,
+          colorAcento: document.getElementById('inp-color-acento').value,
+          titulo:      document.getElementById('inp-doc-titulo').value.trim(),
+          institucion: document.getElementById('inp-doc-inst').value.trim(),
+          asignatura:  document.getElementById('inp-doc-asign').value.trim(),
+        };
+        toast('Guardando diseño...', 'load'); lock(true);
+        google.script.run
+          .withSuccessHandler(r => { lock(false); r?.success ? toast('✅ ' + r.msg, 'done') : toastErr(r?.error); })
+          .withFailureHandler(e => { lock(false); toastErr(e.message); })
+          .wb_guardarDiseno(config);
+      };
+
+      // ── 🧩 TEST: Cargar diseño ──
+      document.getElementById('btn-cargar-diseno').onclick = () => {
+        toast('Cargando diseño guardado...', 'load');
+        google.script.run
+          .withSuccessHandler(r => {
+            toastEl.classList.remove('show');
+            if (!r?.success || !Object.keys(r.diseno||{}).length) {
+              toast('No hay diseño guardado todavía.', 'done'); return;
+            }
+            const d = r.diseno;
+            if (d.fuente)      document.getElementById('sel-fuente').value        = d.fuente;
+            if (d.layout)      document.getElementById('sel-layout').value        = d.layout;
+            if (d.colorAcento) document.getElementById('inp-color-acento').value  = d.colorAcento;
+            if (d.titulo)      document.getElementById('inp-doc-titulo').value    = d.titulo;
+            if (d.institucion) document.getElementById('inp-doc-inst').value      = d.institucion;
+            if (d.asignatura)  document.getElementById('inp-doc-asign').value     = d.asignatura;
+            toast('✅ Diseño restaurado.', 'done');
+          })
+          .withFailureHandler(e => toastErr(e.message))
+          .wb_leerDiseno();
+      };
+
+      // Carga el diseño automáticamente al abrir la pestaña Test (una sola vez)
+      let _disenoLoaded = false;
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          if (tab.dataset.tab === 'test' && !_disenoLoaded && typeof google !== 'undefined' && google?.script?.run) {
+            _disenoLoaded = true;
+            google.script.run
+              .withSuccessHandler(r => {
+                if (!r?.success || !Object.keys(r.diseno||{}).length) return;
+                const d = r.diseno;
+                if (d.fuente)      document.getElementById('sel-fuente').value        = d.fuente;
+                if (d.layout)      document.getElementById('sel-layout').value        = d.layout;
+                if (d.colorAcento) document.getElementById('inp-color-acento').value  = d.colorAcento;
+                if (d.titulo)      document.getElementById('inp-doc-titulo').value    = d.titulo;
+                if (d.institucion) document.getElementById('inp-doc-inst').value      = d.institucion;
+                if (d.asignatura)  document.getElementById('inp-doc-asign').value     = d.asignatura;
+              })
+              .wb_leerDiseno();
+          }
+        });
+      });
 
       // ── Actualizar mostrarStats para mostrar umbral personalizado ──
       const _mostrarStatsOriginal = mostrarStats;
